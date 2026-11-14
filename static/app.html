@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07090c">
+<title>Rendaí</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%2322e58b'/><path d='M20 40l9-12 7 7 9-13' stroke='%2304140c' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="/s/base.css">
+<link rel="stylesheet" href="/s/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="cab">
+    <a class="marca" href="/app"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></i><b>Rend<span>aí</span></b></a>
+    <div class="status">
+      <span class="pill fogo" id="st-fogo" title="Dias seguidos"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s5 4.5 5 9.5a5 5 0 0 1-10 0C7 9 9 7 9 7s.5 3 2.5 3C11.5 7 12 2 12 2Z"/></svg><b>0</b></span>
+      <span class="pill xp" id="st-xp" title="Seu XP"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg><b>0</b></span>
+    </div>
+  </header>
+
+  <main id="tela"></main>
+
+  <nav class="abas" aria-label="Navegação">
+    <button data-aba="inicio" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Início</span></button>
+    <button data-aba="vitrine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s5 4.5 5 9.5a5 5 0 0 1-10 0C7 9 9 7 9 7"/></svg><span>Em alta</span></button>
+    <button data-aba="ranking"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>Ranking</span></button>
+    <button data-aba="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Perfil</span></button>
+  </nav>
+</div>
+
+<div class="folha" id="folha" hidden role="dialog" aria-modal="true"><div class="folha-c"><button class="x" data-fechar-folha aria-label="Fechar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button><div id="folha-corpo"></div></div></div>
+<div class="toast" id="toast" hidden></div>
+<div class="festa" id="festa" hidden><div class="festa-c"><div class="festa-ic" id="festa-ic"></div><h3 id="festa-t"></h3><p id="festa-d"></p><button class="btn btn-pri grande" id="festa-ok">Bora!</button></div></div>
+<canvas id="confete" aria-hidden="true"></canvas>
+<script src="/s/app.js"></script>
+</body>
+</html>
