@@ -21,13 +21,18 @@ def produto(db, i, temp=50.0, ativo=1, conferido=None):
 
 @pytest.fixture()
 def cli(tmp_path):
-    app = criar_app(Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="ck", coletar=False), iniciar_rotina=False)
+    app = criar_app(Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="ck", coletar=False,
+                           planos_por_produto={"prod-pro": "pro", "prod-elite": "elite"}, checkouts={"start": "https://pay/x"}), iniciar_rotina=False)
     db = app.state.db
     for i in range(1, 8):
         produto(db, i, temp=10 * i)
     produto(db, 90, temp=99, ativo=0)                       # fora da vitrine
     produto(db, 91, temp=98, conferido=agora() - 30 * 3600)  # sem conferência há 30 h
     return TestClient(app), db
+
+
+def assinar(c, email="ze@exemplo.com", produto="prod-start", pid="p"):
+    c.post("/api/cakto", json={"secret": "ck", "event": "purchase_approved", "data": {"id": pid + email, "customer": {"email": email}, "product": {"id": produto}}})
 
 
 def entrar(c, email="ze@exemplo.com"):
@@ -52,19 +57,31 @@ def test_checkin_streak_e_xp(cli):
     assert eu["streak"] == 1 and eu["fez_checkin_hoje"] and eu["nivel"]["nome"] == "Iniciante"
 
 
-def test_plano_gratis_tres_por_semana(cli):
+def test_sem_plano_nao_pega_produto_e_start_libera_cinco(cli):
     c, _ = cli
     entrar(c)
-    for i in (1, 2, 3):
-        r = c.post("/api/acao", json={"tipo": "afiliar", "produto": f"hotmart:{i}"})
-        assert r.status_code == 200
+    assert c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:1"}).status_code == 402
+    assinar(c)
+    assert c.get("/api/eu").json()["plano"] == "start"
+    for i in range(1, 6):
+        assert c.post("/api/acao", json={"tipo": "afiliar", "produto": f"hotmart:{i}"}).status_code == 200
     assert c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:1"}).json()["xp_ganho"] == 0  # repetido não dá XP
-    assert c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:4"}).status_code == 402
-    assert c.post("/api/produtos/hotmart:4/kit").status_code == 402
+    assert c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:6"}).status_code == 402
+    assert c.post("/api/produtos/hotmart:7/kit").status_code == 402
+
+
+def test_ganho_estimado_por_produto(cli):
+    c, db = cli
+    db.exec("UPDATE produtos SET preco=297 WHERE id='hotmart:7'")
+    p = next(x for x in c.get("/api/vitrine").json()["produtos"] if x["id"] == "hotmart:7")
+    assert p["ganho_venda"] == round(297 * 0.5 * 0.9, 2) and p["comissao_estimada"] is True
+    planos = c.get("/api/planos").json()["planos"]
+    assert [x["preco"] for x in planos] == [19.90, 29.90, 59.90] and planos[0]["checkout"] == "https://pay/x"
 
 
 def test_primeira_conquista_e_venda(cli):
     c, _ = cli
+    assinar(c)
     entrar(c)
     r = c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:2"}).json()
     assert any(x["codigo"] == "primeiro_passo" for x in r["conquistas"])
@@ -104,11 +121,12 @@ def test_ranking_semana(cli):
     assert r["minha_posicao"] == 1 and r["top"][0]["apelido"] == "Zé das Vendas"
 
 
-def test_cakto_assinante_libera_tudo(cli):
+def test_cakto_elite_libera_tudo(cli):
     c, _ = cli
-    c.post("/api/cakto", json={"secret": "ck", "event": "purchase_approved", "data": {"id": "x1", "customer": {"email": "ze@exemplo.com"}}})
+    assinar(c, produto="prod-elite")
     entrar(c)
-    for i in range(1, 6):
+    assert c.get("/api/eu").json()["plano"] == "elite"
+    for i in range(1, 8):
         assert c.post("/api/acao", json={"tipo": "afiliar", "produto": f"hotmart:{i}"}).status_code == 200
     assert c.get("/api/eu").json()["assinante"] is True
 

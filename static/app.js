@@ -2,7 +2,8 @@
   const $ = (s) => document.querySelector(s)
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
   const num = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace('.', ',') + ' mil' : String(n ?? 0))
-  const brl = (v) => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',')
+  const brl = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const brl0 = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })
   const IC = {
     fogo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s5 4.5 5 9.5a5 5 0 0 1-10 0C7 9 9 7 9 7s.5 3 2.5 3C11.5 7 12 2 12 2Z"/></svg>',
     raio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>',
@@ -68,19 +69,35 @@
 
   function cartaoProduto(p, rot) {
     return `<button class="pl" data-prod="${esc(p.id)}">${p.imagem ? `<img src="${esc(p.imagem)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
-      <div class="pi">${rot ? `<span class="tag">${esc(rot)}</span>` : ''}<b>${esc(p.titulo)}</b>
+      <div class="pi">${rot ? `<span class="tag">${esc(rot)}</span>` : ''}<b>${esc(p.titulo)}</b>${p.ganho_venda ? `<span class="ganho">Ganhe até ${brl(p.ganho_venda)} por venda</span>` : ''}
       <div class="calor">${Math.round(p.temperatura)}°<div class="temp"><i style="width:${Math.max(6, p.temperatura)}%"></i></div></div>
       <div class="meta"><span>★ ${(p.nota || 0).toFixed(1).replace('.', ',')}</span><span>${num(p.avaliacoes)} avaliações</span>${p.alunos ? `<span>${num(p.alunos)} alunos</span>` : ''}</div></div></button>`
   }
   const tempoAte = (t) => { const s = Math.max(0, t - Date.now() / 1000); const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600); return d ? `${d}d ${h}h` : `${h}h ${Math.floor((s % 3600) / 60)}min` }
+
+  function cartoesPlanos(planos) {
+    return `<div class="planos-app">${planos.map((p, i) => `<div class="pa ${i === 1 ? 'dest' : ''}">${i === 1 ? '<span class="tag">Mais escolhido</span>' : ''}
+      <b class="display">${esc(p.nome)}</b><div class="pa-v">${brl(p.preco)}<small>/mês</small></div><span class="pa-de">depois do lançamento ${brl(p.depois)}</span>
+      <ul>${p.itens.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+      ${p.checkout ? `<a class="btn ${i === 1 ? 'btn-pri' : 'btn-sec'} grande" href="${esc(p.checkout)}" target="_blank" rel="noopener">Assinar o ${esc(p.nome)}</a>` : '<span class="atualizado">Abre em instantes</span>'}</div>`).join('')}</div>
+      <p class="atualizado">Pague com o mesmo e-mail desta conta: o plano libera sozinho em segundos. Garantia de 7 dias.</p>`
+  }
+  function abrirPlanos(motivo) {
+    const f = $('#folha'), c = $('#folha-corpo')
+    f.hidden = false
+    c.innerHTML = `<h3 class="display" style="font-size:22px;margin-right:32px">${esc(motivo || 'Escolha seu plano')}</h3><p style="color:var(--mut)">Preço de lançamento por tempo limitado.</p>${cartoesPlanos(eu.planos)}`
+  }
 
   async function telaInicio() {
     const t = $('#tela')
     t.innerHTML = '<div class="esq" style="height:140px;margin-top:8px"></div><div class="esq" style="margin-top:16px"></div><div class="esq" style="height:220px;margin-top:16px"></div>'
     const m = await api('/api/missao')
     const n = eu.nivel
+    const potencial = m.produtos.reduce((t, p) => t + (p.ganho_venda || 0) * 2, 0)
     const dias = Array.from({ length: 7 }, (_, i) => `<i class="${i < Math.min(7, eu.streak) ? 'on' : ''}">${i < eu.streak ? IC.check : ''}</i>`).join('')
     t.innerHTML = `
+      ${eu.assinante ? '' : `<div class="paywall"><b class="display">Escolha seu plano e comece a vender hoje</b><span>Os produtos abaixo pagam até ${brl(Math.max(0, ...m.produtos.map((p) => p.ganho_venda || 0)))} por venda.</span><button class="btn btn-ouro grande" data-planos>Ver planos</button></div>`}
+      ${potencial ? `<div class="potencial"><span>Seu potencial nesta semana</span><b>${brl0(potencial)}</b><small>vendendo 2 de cada produto da sua missão · ${brl0(potencial * 4.3)} por mês</small></div>` : ''}
       <div class="nivel"><div class="nivel-top"><div class="nivel-n">${n.numero}</div><div><b>${esc(n.nome)}</b><span>${n.proximo ? `Faltam ${num(n.falta)} XP para ${esc(n.proximo)}` : 'Nível máximo. Lenda!'}</span></div></div>
         <div class="barra"><i id="barra-xp"></i></div></div>
       <div class="checkin"><div><b>${eu.fez_checkin_hoje ? 'Presença confirmada hoje' : 'Marque presença hoje'}</b><span>${eu.streak} ${eu.streak === 1 ? 'dia seguido' : 'dias seguidos'}</span><div class="dias">${dias}</div></div>
@@ -139,8 +156,8 @@
       <div class="sec-t"><h2>Conquistas</h2><span style="color:var(--mut);font-size:14px">${tem.size}/${eu.todas_conquistas.length}</span></div>
       <div class="conqs">${eu.todas_conquistas.map((c) => `<div class="cq ${tem.has(c.codigo) ? 'on' : ''}">${IC.estrela}<b>${esc(c.nome)}</b>${esc(c.descricao)}</div>`).join('')}</div>
       <div class="sec-t"><h2>Plano</h2></div>
-      ${eu.assinante ? '<div class="cartao"><div class="lin"><span>Rendaí Pro</span><b style="color:var(--ac)">Ativo</b></div></div>' :
-        `<div class="pro"><b class="display" style="font-size:20px">Rendaí Pro · R$ 19,90/mês</b><span style="color:var(--mut)">Vitrine completa, kits ilimitados e alerta dos produtos que começaram a bombar. Você está usando ${eu.escolhidos_semana} de ${eu.limite_semana} produtos grátis nesta semana.</span>${eu.checkout ? `<a class="btn btn-pri grande" href="${esc(eu.checkout)}" target="_blank" rel="noopener">Assinar o Pro</a>` : '<span class="atualizado">Assinatura abre em breve.</span>'}</div>`}
+      ${eu.assinante ? `<div class="cartao"><div class="lin"><span>Plano ${esc((eu.planos.find((x) => x.codigo === eu.plano) || {}).nome || '')}</span><b style="color:var(--ac)">Ativo</b></div><div class="lin"><span>Produtos nesta semana</span><b>${eu.escolhidos_semana}${eu.limite_semana ? ' de ' + eu.limite_semana : ''}</b></div>${eu.plano !== 'elite' ? '<button class="btn btn-sec" data-planos>Subir de plano</button>' : ''}</div>` :
+        cartoesPlanos(eu.planos)}
       <button class="btn btn-sec" style="width:100%;margin-top:24px" id="sair">Sair da conta</button>`
     $('#f-ap').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/eu/apelido', { method: 'POST', body: JSON.stringify({ apelido: $('#ap').value }) }); toast('Apelido salvo'); telaPerfil() } catch (er) { toast(er.message, 1) } }
     $('#sair').onclick = async () => { await fetch('/api/sair', { method: 'POST' }); location.href = '/' }
@@ -156,6 +173,10 @@
     c.innerHTML = `
       <div class="det-top">${p.imagem ? `<img src="${esc(p.imagem)}" alt="">` : ''}<div><h3>${esc(p.titulo)}</h3><span>${esc(p.autor || '')} · Hotmart</span></div></div>
       <div class="nums"><div><b style="color:var(--fogo)">${Math.round(p.temperatura)}°</b><span>temperatura</span></div><div><b>★ ${(p.nota || 0).toFixed(1).replace('.', ',')}</b><span>${num(p.avaliacoes)} avaliações</span></div><div><b>${p.alunos ? num(p.alunos) : '—'}</b><span>alunos</span></div></div>
+      ${p.ganho_venda ? `<div class="ganho-box"><div class="gb-top"><span>Você ganha até</span><b>${brl(p.ganho_venda)}</b><span>por venda</span></div>
+        <label for="sim">Vendas por semana: <b id="sim-v">3</b></label><input type="range" id="sim" min="1" max="20" value="3">
+        <div class="gb-res"><div><span>na semana</span><b id="sim-s"></b></div><div><span>no mês</span><b id="sim-m"></b></div></div>
+        <small>${p.comissao_estimada ? 'Comissão média estimada de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + ', já descontada a taxa da plataforma.' : 'Comissão de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + '.'}</small></div>` : ''}
       ${p.frase ? `<div class="frase">${esc(p.frase)}</div>` : ''}
       <ol class="passos-af">
         <li><span>Toque em <b>Quero vender</b> para guardar este produto na sua lista (vale XP).</span></li>
@@ -163,14 +184,23 @@
         <li><span>Copie o seu link de afiliado e divulgue com o kit pronto. A comissão cai na <b>sua</b> conta Hotmart.</span></li>
       </ol>
       <div class="botoes">
-        ${p.escolhido ? '' : `<button class="btn btn-pri grande" id="b-quero" ${p.liberado ? '' : 'disabled'}>${p.liberado ? 'Quero vender (+50 XP)' : 'Limite grátis da semana atingido'}</button>`}
+        ${p.escolhido ? '' : eu.assinante && !p.liberado ? '<button class="btn btn-ouro grande" data-planos>Limite do plano: subir de plano</button>' : `<button class="btn btn-pri grande" id="b-quero">Quero vender (+50 XP)</button>`}
         <a class="btn btn-sec grande" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir na Hotmart ${IC.seta}</a>
         ${p.escolhido ? '<button class="btn btn-ouro grande" id="b-kit">Gerar kit de divulgação</button>' : ''}
       </div>
       <div id="kit"></div>
       ${p.escolhido ? `<div class="botoes" style="margin-top:16px"><button class="btn btn-sec" id="b-div">Divulguei agora (+30 XP)</button><button class="btn btn-sec" id="b-venda">Registrar uma venda (+200 XP)</button></div>` : ''}`
+    const sim = $('#sim')
+    if (sim) {
+      const conta = () => { const v = +sim.value; $('#sim-v').textContent = v; $('#sim-s').textContent = brl0(v * p.ganho_venda); $('#sim-m').textContent = brl0(v * p.ganho_venda * 4.3) }
+      sim.oninput = conta; conta()
+    }
     const bq = $('#b-quero')
-    if (bq) bq.onclick = async () => { bq.disabled = true; try { await comemorar(await acao('afiliar', id)); abrirProduto(id) } catch (e) { toast(e.message, 1); bq.disabled = false } }
+    if (bq) bq.onclick = async () => {
+      if (!eu.assinante) return abrirPlanos('Escolha um plano para vender este produto')
+      bq.disabled = true
+      try { await comemorar(await acao('afiliar', id)); abrirProduto(id) } catch (e) { if (e.status === 402) abrirPlanos(e.message); else toast(e.message, 1); bq.disabled = false }
+    }
     const bk = $('#b-kit')
     if (bk) bk.onclick = async () => {
       bk.disabled = true; bk.textContent = 'Escrevendo o seu kit…'
@@ -196,6 +226,7 @@
   document.addEventListener('click', async (e) => {
     const cp = e.target.closest('[data-copiar]')
     if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copiar); cp.textContent = 'Copiado!'; setTimeout(() => (cp.textContent = 'Copiar'), 1500) } catch {} return }
+    if (e.target.closest('[data-planos]')) return abrirPlanos()
     const pr = e.target.closest('[data-prod]')
     if (pr) return abrirProduto(pr.dataset.prod)
     const ir = e.target.closest('[data-ir]')

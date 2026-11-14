@@ -21,8 +21,8 @@
     <span class="chip"><span class="ponto"></span>Produtos conferidos todo dia</span>
     <h1>Seu <em>dinheiro extra</em> do fim de semana começa aqui.</h1>
     <p class="sub">A gente acha os produtos digitais que estão vendendo agora, te entrega o post pronto e transforma cada venda em missão. Você só divulga.</p>
-    <div class="acoes"><button class="btn btn-pri grande" data-entrar>Começar grátis</button><a class="btn btn-sec grande" href="#vitrine">Ver o que está vendendo</a></div>
-    <ul class="mini-prova"><li><b>3 produtos</b> por semana no grátis</li><li>Sem cartão</li><li>Comissão cai direto na <b>sua</b> conta</li></ul>
+    <div class="acoes"><a class="btn btn-pri grande" href="#preco">Quero começar agora</a><a class="btn btn-sec grande" href="#vitrine">Ver o que está vendendo</a></div>
+    <ul class="mini-prova"><li>Produtos que pagam até <b id="mp-ganho">R$ 150</b> por venda</li><li>Garantia de <b>7 dias</b></li><li>Comissão cai direto na <b>sua</b> conta</li></ul>
   </div>
   <div class="tel" aria-hidden="true">
     <div class="tel-tela">
@@ -42,6 +42,26 @@
     <div class="passo"><div class="pi ouro"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div><b>Pegue o seu link</b><span>Você se afilia em 1 minuto na plataforma do produto. A comissão é sua.</span></div>
     <div class="passo"><div class="pi roxo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7.4 18.6 3.6 19.4l.8-3.8Z"/></svg></div><b>Divulgue com o kit pronto</b><span>Posts, mensagem de WhatsApp e roteiro de vídeo escritos pela IA.</span></div>
     <div class="passo"><div class="pi fogo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></div><b>Suba de nível</b><span>Cada divulgação e cada venda vira XP, missão cumprida e posição no ranking.</span></div>
+  </div>
+</div></section>
+
+<section id="calc"><div class="wrap calc">
+  <div>
+    <span class="chip"><span class="ponto"></span>Faça a conta</span>
+    <h2>Quanto dá para tirar no fim de semana?</h2>
+    <p class="sub2">Mexa nos números. A conta usa a comissão média dos produtos que estão em alta agora na vitrine.</p>
+    <label for="c-prod">Produtos que você divulga: <b id="c-prod-v">3</b></label>
+    <input type="range" id="c-prod" min="1" max="15" value="3">
+    <label for="c-vend">Vendas por produto na semana: <b id="c-vend-v">2</b></label>
+    <input type="range" id="c-vend" min="1" max="10" value="2">
+  </div>
+  <div class="calc-res">
+    <span>Você pode chegar a</span>
+    <div class="calc-n" id="c-semana">R$ 0</div>
+    <span>por semana</span>
+    <div class="calc-mes">ou <b id="c-mes">R$ 0</b> por mês</div>
+    <p id="c-base" class="calc-base"></p>
+    <a class="btn btn-ouro grande" href="#preco">Quero esse dinheiro</a>
   </div>
 </div></section>
 
@@ -71,12 +91,9 @@
 </div></section>
 
 <section id="preco" class="fundo2"><div class="wrap">
-  <div class="tit"><h2>Comece de graça</h2><p>Assine só quando quiser vender mais produtos ao mesmo tempo.</p></div>
-  <div class="planos">
-    <div class="plano"><b class="pn">Grátis</b><div class="pv">R$ 0</div><ul class="lista"><li>3 produtos por semana</li><li>Kit de divulgação nesses 3</li><li>Missões, níveis e ranking</li></ul><button class="btn btn-sec grande" data-entrar>Criar conta</button></div>
-    <div class="plano destaque"><span class="selo">Mais escolhido</span><b class="pn">Rendaí Pro</b><div class="pv">R$ 19,90<small>/mês</small></div><ul class="lista"><li>Vitrine completa, todos os produtos</li><li>Kits ilimitados</li><li>Alerta dos produtos que começaram a bombar</li></ul><button class="btn btn-pri grande" data-entrar>Começar grátis</button></div>
-  </div>
-  <p class="aviso">O Rendaí não vende os produtos nem garante ganhos: o resultado depende da sua divulgação. As comissões são pagas pela plataforma de cada produto, direto na sua conta.</p>
+  <div class="tit"><span class="chip urg"><span class="ponto"></span>Preço de lançamento até <b id="lanc-data">30/11</b></span><h2>Escolha seu plano</h2><p>Comece hoje. Se não gostar, a garantia de 7 dias devolve seu dinheiro.</p></div>
+  <div class="planos tres" id="planos"><div class="vazio">Carregando os planos…</div></div>
+  <p class="aviso">Valores de ganho são simulações com a comissão média dos produtos da vitrine: o resultado de cada pessoa depende de quanto e como ela divulga. As comissões são pagas pela plataforma de cada produto, direto na sua conta.</p>
 </div></section>
 </main>
 

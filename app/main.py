@@ -21,7 +21,23 @@ from app.db import Banco, agora, hoje
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 ESTATICO = Path(__file__).resolve().parent.parent / "static"
 COOKIE = "rendai_s"
-GRATIS_POR_SEMANA = 3
+COMISSAO_ESTIMADA = 0.5   # comissão média dos produtos afiliáveis da Hotmart (até lermos a real com conta de afiliado)
+TAXA_PLATAFORMA = 0.10     # parte que a plataforma fica antes de repassar a comissão (aprox.)
+# Planos (preço de lançamento). produtos_semana = quantos produtos a pessoa pode pegar para vender por semana (None = sem limite).
+PLANOS = {
+    "start": {"nome": "Start", "preco": 19.90, "depois": 29.90, "produtos_semana": 5, "kits_semana": 10,
+              "itens": ["5 produtos em alta por semana", "Kit de divulgação pronto em cada um", "Missões, níveis e ranking"]},
+    "pro": {"nome": "Pro", "preco": 29.90, "depois": 39.90, "produtos_semana": 15, "kits_semana": 40,
+            "itens": ["15 produtos por semana", "Kits de divulgação à vontade", "Calculadora de ganhos por produto", "Ranking com prêmios de XP em dobro"]},
+    "elite": {"nome": "Elite", "preco": 59.90, "depois": 79.90, "produtos_semana": None, "kits_semana": None,
+              "itens": ["Vitrine completa, sem limite", "Alerta dos produtos que começaram a bombar", "Kits ilimitados e roteiro de vídeo", "Suporte prioritário"]},
+}
+
+
+def ganho_por_venda(preco, pct=None) -> float | None:
+    if not preco:
+        return None
+    return round(float(preco) * (pct or COMISSAO_ESTIMADA) * (1 - TAXA_PLATAFORMA), 2)
 
 
 @dataclass
@@ -41,6 +57,13 @@ class Config:
     checkout_mensal: str = ""
     dev: bool = False
     coletar: bool = True
+    checkouts: dict = None            # {"start": url, "pro": url, "elite": url}
+    planos_por_produto: dict = None   # {"<id do produto na Cakto>": "start"|"pro"|"elite"}
+    lancamento_ate: str = "2026-11-30"
+
+    def __post_init__(self):
+        self.checkouts = self.checkouts or {}
+        self.planos_por_produto = self.planos_por_produto or {}
 
 
 def carregar() -> Config:
@@ -51,7 +74,9 @@ def carregar() -> Config:
                   smtp_host=e("SMTP_HOST", ""), smtp_port=int(e("SMTP_PORT", "587") or 587), smtp_user=e("SMTP_USER", ""),
                   smtp_senha=e("SMTP_PASSWORD", ""), smtp_from=e("RENDAI_SMTP_FROM", "Rendaí <contato@rangeltech.net>"),
                   cakto_segredo=e("RENDAI_CAKTO_SEGREDO", ""), checkout_mensal=e("RENDAI_CHECKOUT_MENSAL", ""),
-                  dev=e("RENDAI_DEV", "") == "1", coletar=e("RENDAI_COLETAR", "1") == "1")
+                  dev=e("RENDAI_DEV", "") == "1", coletar=e("RENDAI_COLETAR", "1") == "1",
+                  checkouts=json.loads(e("RENDAI_CHECKOUTS", "") or "{}"), planos_por_produto=json.loads(e("RENDAI_PLANOS_CAKTO", "") or "{}"),
+                  lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"))
 
 
 def _rotina_coleta(db: Banco, parar: threading.Event) -> None:
@@ -86,8 +111,20 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             raise HTTPException(401, "entre na sua conta")
         return u
 
+    def plano_de(u: dict) -> dict | None:
+        return PLANOS.get(u.get("plano") or "start") if auth.assinante(u) else None
+
+    def limite_semana(u: dict):
+        pl = plano_de(u)
+        return 0 if not pl else pl["produtos_semana"]
+
+    def pode_pegar(u: dict, pid: str) -> bool:
+        lim = limite_semana(u)
+        lib = liberados(u)
+        return pid in lib or lim is None or len(lib) < lim
+
     def liberados(u: dict) -> set[str]:
-        """Plano grátis: até 3 produtos escolhidos por semana; assinante: todos."""
+        """Produtos que a pessoa escolheu vender nesta semana (o plano limita quantos)."""
         ini, fim, _ = jogo.semana()
         return {a["produto"] for a in db.todos("SELECT DISTINCT produto FROM acoes WHERE usuario=? AND tipo='afiliar' AND criado BETWEEN ? AND ?", (u["id"], ini, fim))}
 
@@ -95,17 +132,27 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         assin = auth.assinante(u)
         conq = db.todos("SELECT codigo, criado FROM conquistas WHERE usuario=? ORDER BY criado", (u["id"],))
         comissoes = db.um("SELECT COALESCE(SUM(valor),0) s, COUNT(*) n FROM acoes WHERE usuario=? AND tipo='venda'", (u["id"],))
-        return {"email": u["email"], "apelido": u["apelido"] or f"Vendedor {u['id']}", "assinante": assin, "checkout": cfg.checkout_mensal,
+        return {"email": u["email"], "apelido": u["apelido"] or f"Vendedor {u['id']}", "assinante": assin, "plano": (u.get("plano") if assin else None), "planos": planos_publicos(),
                 "nivel": jogo.nivel(u["xp"]), "streak": u["streak"], "fez_checkin_hoje": u["ultimo_dia"] == hoje(),
                 "comissoes": round(comissoes["s"], 2), "vendas": comissoes["n"], "escolhidos_semana": len(liberados(u)),
-                "limite_semana": None if assin else GRATIS_POR_SEMANA,
+                "limite_semana": limite_semana(u), "ganho_estimado_vendas": round(sum(
+                    ganho_por_venda(p["preco"], p["comissao_pct"]) or 0 for p in db.todos(
+                        "SELECT preco, comissao_pct FROM produtos WHERE id IN (%s)" % ",".join("?" * len(liberados(u))), tuple(liberados(u)))) if liberados(u) else 0, 2),
                 "conquistas": [{"codigo": c["codigo"], "nome": jogo.CONQUISTAS.get(c["codigo"], (c["codigo"], ""))[0],
                                 "descricao": jogo.CONQUISTAS.get(c["codigo"], ("", ""))[1]} for c in conq],
                 "todas_conquistas": [{"codigo": k, "nome": v[0], "descricao": v[1]} for k, v in jogo.CONQUISTAS.items()]}
 
+    def planos_publicos() -> list[dict]:
+        checkouts = cfg.checkouts
+        return [{"codigo": k, **v, "checkout": checkouts.get(k) or "", "lancamento_ate": cfg.lancamento_ate} for k, v in PLANOS.items()]
+
     def produto_publico(p: dict) -> dict:
-        return {k: p.get(k) for k in ("id", "plataforma", "titulo", "imagem", "categoria", "topico", "autor", "nota", "avaliacoes", "alunos", "url",
-                                       "temperatura", "frase", "conferido")}
+        out = {k: p.get(k) for k in ("id", "plataforma", "titulo", "imagem", "categoria", "topico", "autor", "nota", "avaliacoes", "alunos", "url",
+                                      "temperatura", "frase", "conferido", "preco")}
+        out["comissao_pct"] = p.get("comissao_pct") or COMISSAO_ESTIMADA
+        out["comissao_estimada"] = not p.get("comissao_pct")
+        out["ganho_venda"] = ganho_por_venda(p.get("preco"), p.get("comissao_pct"))
+        return out
 
     @app.get("/health")
     def health():
@@ -147,6 +194,10 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         return resp
 
     # ------------------------------------------------ jogo
+    @app.get("/api/planos")
+    def planos():
+        return {"planos": planos_publicos(), "comissao_estimada": COMISSAO_ESTIMADA}
+
     @app.get("/api/eu")
     def eu(request: Request):
         return perfil(usuario(request))
@@ -171,8 +222,10 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             raise HTTPException(422, "ação desconhecida")
         if pid and not db.um("SELECT 1 FROM produtos WHERE id=?", (pid,)):
             raise HTTPException(404, "produto não encontrado")
-        if tipo == "afiliar" and not auth.assinante(u) and pid not in liberados(u) and len(liberados(u)) >= GRATIS_POR_SEMANA:
-            raise HTTPException(402, f"no plano grátis são {GRATIS_POR_SEMANA} produtos por semana; assine para liberar todos")
+        if tipo == "afiliar" and not auth.assinante(u):
+            raise HTTPException(402, "escolha um plano para começar a vender")
+        if tipo == "afiliar" and not pode_pegar(u, pid):
+            raise HTTPException(402, f"seu plano libera {limite_semana(u)} produtos por semana; suba de plano para pegar mais")
         if tipo == "venda":
             try:
                 valor = round(float(valor), 2)
@@ -216,7 +269,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         p = db.um("SELECT * FROM produtos WHERE id=? AND ativo=1", (pid,))
         if not p:
             raise HTTPException(404, "esse produto saiu da vitrine (a oferta acabou ou mudou)")
-        lib = auth.assinante(u) or pid in liberados(u) or len(liberados(u)) < GRATIS_POR_SEMANA
+        lib = auth.assinante(u) and pode_pegar(u, pid)
         hist = db.todos("SELECT dia, avaliacoes, alunos FROM historico WHERE produto=? ORDER BY dia DESC LIMIT 14", (pid,))
         return {**produto_publico(p), "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1]}
 
@@ -226,7 +279,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         p = db.um("SELECT * FROM produtos WHERE id=? AND ativo=1", (pid,))
         if not p:
             raise HTTPException(404, "produto fora da vitrine")
-        if not auth.assinante(u) and pid not in liberados(u):
+        if not auth.assinante(u) or pid not in liberados(u):
             raise HTTPException(402, "escolha este produto para vender (botão \"Quero vender\") para liberar o kit")
         try:
             k = kit.gerar(db, cfg, p)
@@ -258,7 +311,9 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             return {"ok": True, "ignorado": "sem email"}
         u = auth.usuario_por_email(db, email)
         if evento in ("purchase_approved", "subscription_renewed", "subscription_created"):
-            db.exec("UPDATE usuarios SET plano='mensal', ativo_ate=?, pedido=? WHERE id=?", (max(agora(), u["ativo_ate"]) + 32 * 86400, str(dados.get("id") or ""), u["id"]))
+            prod = str((dados.get("product") or {}).get("id") or "")
+            plano = cfg.planos_por_produto.get(prod, "start")
+            db.exec("UPDATE usuarios SET plano=?, ativo_ate=?, pedido=? WHERE id=?", (plano, max(agora(), u["ativo_ate"]) + 32 * 86400, str(dados.get("id") or ""), u["id"]))
             return {"ok": True, "liberado": email}
         if evento in ("refund", "chargeback", "subscription_canceled", "subscription_cancelled"):
             db.exec("UPDATE usuarios SET ativo_ate=? WHERE id=?", (agora(), u["id"]))

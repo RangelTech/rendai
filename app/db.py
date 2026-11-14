@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS produtos (
   temperatura REAL NOT NULL DEFAULT 0, -- 0 a 100
   frase TEXT,                          -- "por que está vendendo" (IA)
   visto REAL NOT NULL,                 -- 1a vez que apareceu
-  conferido REAL NOT NULL              -- última conferência de que a oferta existe
+  conferido REAL NOT NULL,             -- última conferência de que a oferta existe
+  oferta TEXT, preco REAL, comissao_pct REAL  -- preço do checkout; comissão real quando lida com conta de afiliado
 );
 CREATE TABLE IF NOT EXISTS historico (produto TEXT NOT NULL, dia TEXT NOT NULL, avaliacoes INTEGER, alunos INTEGER, PRIMARY KEY(produto, dia));
 CREATE TABLE IF NOT EXISTS acoes (
@@ -54,6 +55,11 @@ class Banco:
         self.con.row_factory = sqlite3.Row
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.executescript(ESQUEMA)
+        # migrações simples (colunas novas em banco que já existe)
+        cols = {r[1] for r in self.con.execute("PRAGMA table_info(produtos)")}
+        for col, tipo in (("oferta", "TEXT"), ("preco", "REAL"), ("comissao_pct", "REAL")):
+            if col not in cols:
+                self.con.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo}")
 
     @contextmanager
     def tx(self):

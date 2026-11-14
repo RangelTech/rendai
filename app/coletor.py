@@ -57,7 +57,7 @@ def buscar_hotmart(cliente: httpx.Client, termo: str) -> list[dict]:
             "codigo": x.get("producerReferenceCode"), "imagem": x.get("finalAvatar") or x.get("avatar"), "categoria": x.get("category"),
             "topico": x.get("topic"), "autor": x.get("authorName") or x.get("ownerName"), "descricao": (x.get("description") or "")[:1200],
             "nota": float(x.get("rating") or 0), "avaliacoes": int(x.get("totalReviews") or 0),
-            "vendas": str(x.get("salesEnabled")).lower() == "true",
+            "vendas": str(x.get("salesEnabled")).lower() == "true", "oferta": x.get("offer"),
         })
     return out
 
@@ -71,14 +71,36 @@ def gravar(db: Banco, p: dict) -> None:
     ativo = 1 if p["vendas"] and not bloqueado(p) else 0
     motivo = None if ativo else ("filtro" if bloqueado(p) else "vendas desligadas")
     with db.tx() as c:
-        c.execute("""INSERT INTO produtos(id,plataforma,titulo,slug,codigo,imagem,categoria,topico,autor,descricao,nota,avaliacoes,url,ativo,motivo_inativo,visto,conferido)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        c.execute("""INSERT INTO produtos(id,plataforma,titulo,slug,codigo,imagem,categoria,topico,autor,descricao,nota,avaliacoes,url,ativo,motivo_inativo,visto,conferido,oferta)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                      ON CONFLICT(id) DO UPDATE SET titulo=excluded.titulo, imagem=excluded.imagem, nota=excluded.nota, avaliacoes=excluded.avaliacoes,
-                       descricao=excluded.descricao, url=excluded.url, ativo=excluded.ativo, motivo_inativo=excluded.motivo_inativo, conferido=excluded.conferido""",
+                       descricao=excluded.descricao, url=excluded.url, ativo=excluded.ativo, motivo_inativo=excluded.motivo_inativo, conferido=excluded.conferido,
+                       oferta=COALESCE(excluded.oferta, oferta)""",
                   (p["id"], p["plataforma"], p["titulo"], p["slug"], p["codigo"], p["imagem"], p["categoria"], p["topico"], p["autor"], p["descricao"],
-                   p["nota"], p["avaliacoes"], url, ativo, motivo, agora(), agora()))
+                   p["nota"], p["avaliacoes"], url, ativo, motivo, agora(), agora(), p.get("oferta")))
         c.execute("INSERT INTO historico(produto,dia,avaliacoes) VALUES(?,?,?) ON CONFLICT(produto,dia) DO UPDATE SET avaliacoes=excluded.avaliacoes",
                   (p["id"], hoje(), p["avaliacoes"]))
+
+
+def preco_hotmart(cliente: httpx.Client, codigo: str, oferta: str) -> float | None:
+    """Preço à vista da oferta, lido do checkout público (Nuxt: __NUXT_DATA__ é um vetor e os campos apontam para posições)."""
+    r = cliente.get(f"https://pay.hotmart.com/{codigo}", params={"off": oferta})
+    if r.status_code != 200:
+        return None
+    m = re.search(r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
+    if not m:
+        return None
+    d = json.loads(m.group(1))
+    for v in d:
+        if isinstance(v, dict) and {"amount", "installments", "offer"} <= set(v):
+            alvo = d[v["amount"]] if isinstance(v["amount"], int) else v["amount"]
+            if isinstance(alvo, dict) and "value" in alvo:
+                val = d[alvo["value"]] if isinstance(alvo["value"], int) and alvo["value"] < len(d) else alvo["value"]
+                try:
+                    return float(val)
+                except (TypeError, ValueError):
+                    return None
+    return None
 
 
 def conferir(db: Banco, cliente: httpx.Client, pid: str) -> bool:
@@ -94,6 +116,13 @@ def conferir(db: Banco, cliente: httpx.Client, pid: str) -> bool:
         perfil = _next_data(r.text)["props"]["pageProps"].get("profile") or {}
         ok = bool(perfil.get("salesEnabled")) and perfil.get("isActiveOnPlatform") is not False
         alunos = perfil.get("totalUsers")
+        if ok and p.get("codigo") and p.get("oferta"):
+            try:
+                preco = preco_hotmart(cliente, p["codigo"], p["oferta"])
+                if preco and preco > 0:
+                    db.exec("UPDATE produtos SET preco=? WHERE id=?", (preco, pid))
+            except Exception as e:  # noqa: BLE001
+                log.info("preço de %s indisponível: %s", pid, e)
         db.exec("UPDATE produtos SET ativo=?, motivo_inativo=?, conferido=?, alunos=COALESCE(?,alunos) WHERE id=?",
                 (1 if ok and not bloqueado(p) else 0, None if ok else "vendas desligadas", agora(), alunos, pid))
         if alunos is not None:

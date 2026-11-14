@@ -111,3 +111,27 @@
 .festa-c h3{font-size:24px;margin-bottom:8px}
 .festa-c p{color:var(--mut);margin:0 0 24px}
 #confete{position:fixed;inset:0;pointer-events:none;z-index:90;width:100%;height:100%}
+
+.pl .ganho{font:800 13px "Display";color:var(--ac)}
+.paywall{background:linear-gradient(140deg,#2a2210,#121821 75%);border:1px solid rgba(255,201,60,.4);border-radius:24px;padding:20px;display:grid;gap:8px;margin-bottom:16px}
+.paywall b{font-size:20px}.paywall span{color:var(--mut);font-size:14px}
+.potencial{background:linear-gradient(140deg,#0f2a1d,#121821 70%);border:1px solid rgba(34,229,139,.35);border-radius:24px;padding:20px;display:grid;gap:4px;margin-bottom:16px}
+.potencial span{color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.potencial b{font:800 40px "Display";color:var(--ac);line-height:1.1}
+.potencial small{color:var(--mut)}
+.ganho-box{background:linear-gradient(160deg,#1f1b10,#121821);border:1px solid rgba(255,201,60,.35);border-radius:20px;padding:16px;margin:16px 0;display:grid;gap:8px}
+.gb-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gb-top span{color:var(--mut);font-size:14px}.gb-top b{font:800 30px "Display";color:var(--ouro)}
+.ganho-box label{margin:8px 0 0;color:var(--fg);font-size:14px}.ganho-box label b{color:var(--ouro)}
+.ganho-box input[type=range]{-webkit-appearance:none;appearance:none;padding:0;height:10px;border-radius:99px;background:var(--card2);border:0}
+.ganho-box input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--ac);box-shadow:0 3px 0 var(--acd)}
+.gb-res{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gb-res div{background:rgba(0,0,0,.25);border-radius:14px;padding:12px;text-align:center}
+.gb-res span{display:block;color:var(--mut);font-size:12px}.gb-res b{font:800 22px "Display";color:var(--ac)}
+.ganho-box small{color:var(--mut);font-size:12px}
+.planos-app{display:grid;gap:12px;margin-top:16px}
+.pa{background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:20px;display:grid;gap:8px;position:relative}
+.pa.dest{border-color:rgba(34,229,139,.5);background:linear-gradient(160deg,#0f1f17,#121821)}
+.pa b.display{font-size:18px}.pa-v{font:800 32px "Display"}.pa-v small{font-size:14px;color:var(--mut)}
+.pa-de{color:var(--mut);font-size:12px}
+.pa ul{margin:4px 0 8px;padding-left:18px;color:var(--mut);font-size:14px;display:grid;gap:4px}
