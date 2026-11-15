@@ -219,14 +219,14 @@ def test_link_rendai_venda_garantia_e_saque(cli):
     assert p["link_rendai"].startswith("https://go.hotmart.com/CASA1?sck=rd")
     sck = p["link_rendai"].split("sck=")[1]
     u = db.um("SELECT id FROM usuarios WHERE email='ze@exemplo.com'")
-    tx = 0.10
-    assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 30, "status": "APPROVED", "garantia_ate": agora() + 86400}) == "nova"
-    assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "comissao": 50, "status": "APPROVED", "garantia_ate": agora() - 10}) == "nova"
+    tx = 0.50
+    assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 300, "status": "APPROVED", "garantia_ate": agora() + 86400}) == "nova"
+    assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "comissao": 100, "status": "APPROVED", "garantia_ate": agora() - 10}) == "nova"
     assert carteira.registrar_venda(db, tx, {"transacao": "T3", "sck": "outra", "comissao": 50}) == "sem dono"
     assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 30, "status": "APPROVED"}) == "ignorada"
     w = c.get("/api/carteira").json()
-    assert w["a_liberar"] == 27.0 and w["disponivel"] == 45.0
-    assert c.post("/api/carteira/saque").status_code == 422          # sem PIX
+    assert w["a_liberar"] == 150.0 and w["disponivel"] == 50.0
+    assert c.post("/api/carteira/saque").status_code == 422          # abaixo do mínimo de R$ 100 / sem PIX
     c.post("/api/carteira/pix", json={"pix": "ze@exemplo.com"})
     assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "status": "REFUNDED"}) == "reembolsada"
     assert c.get("/api/carteira").json()["disponivel"] == 0.0
@@ -234,7 +234,7 @@ def test_link_rendai_venda_garantia_e_saque(cli):
     assert carteira.liberar_vencidas(db) == 1
     assert c.post("/api/carteira/saque").status_code == 200
     w = c.get("/api/carteira").json()
-    assert w["disponivel"] == 0.0 and w["saques"][0]["valor"] == 27.0
+    assert w["disponivel"] == 0.0 and w["saques"][0]["valor"] == 150.0
     k = c.post("/api/produtos/hotmart:1/kit")
     assert k.status_code in (200, 503)
 
@@ -244,3 +244,51 @@ def test_admin_importa_vendas(cli):
     c2 = c
     r = c2.post("/api/admin/vendas", json=[{"transacao": "X", "sck": "rd00000000", "comissao": 10}], headers={"x-admin-key": "errada"})
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------- senha (padrão), código (opção), esqueci a senha
+def test_senha_criar_entrar_trocar_e_esqueci(cli):
+    from fastapi.testclient import TestClient
+    c, _ = cli
+    app = c.app
+    em = "senha@exemplo.com"
+    entrar(c, em)
+    assert c.get("/api/senha").json()["tem_senha"] is False
+    assert c.post("/api/senha", json={"senha": "curta"}).status_code == 422
+    assert c.post("/api/senha", json={"senha": "boa-senha-1"}).status_code == 200
+    assert c.get("/api/senha").json()["tem_senha"] is True
+    # trocar exige a atual
+    assert c.post("/api/senha", json={"senha": "outra-senha", "atual": "errada"}).status_code == 400
+    assert c.post("/api/senha", json={"senha": "outra-senha", "atual": "boa-senha-1"}).status_code == 200
+    # entrar com senha num cliente novo (sem cookie)
+    n = TestClient(app)
+    assert n.post("/api/entrar/senha", json={"email": em, "senha": "boa-senha-1"}).status_code == 400
+    r = n.post("/api/entrar/senha", json={"email": em, "senha": "outra-senha"})
+    assert r.status_code == 200 and n.get("/api/senha").status_code == 200
+    # conta sem senha recebe dica de usar o código
+    entrar(TestClient(app), "semsenha@exemplo.com")
+    r = TestClient(app).post("/api/entrar/senha", json={"email": "semsenha@exemplo.com", "senha": "qualquer1"})
+    assert r.status_code == 400 and "código" in r.json()["detail"]
+    # esqueci a senha: código separado do login, troca a senha e já entra
+    e = TestClient(app)
+    j = e.post("/api/senha/esqueci", json={"email": em}).json()
+    assert e.post("/api/senha/redefinir", json={"email": em, "codigo": "000000" if j["codigo_dev"] != "000000" else "111111", "senha": "nova-senha-9"}).status_code == 400
+    j = None
+    import app.auth as A
+    A.REENVIO_MIN_S = 0
+    j = e.post("/api/senha/esqueci", json={"email": em}).json()
+    assert e.post("/api/senha/redefinir", json={"email": em, "codigo": j["codigo_dev"], "senha": "nova-senha-9"}).status_code == 200
+    assert e.get("/api/senha").json()["tem_senha"] is True
+    assert TestClient(app).post("/api/entrar/senha", json={"email": em, "senha": "nova-senha-9"}).status_code == 200
+    # e-mail sem conta: mesma resposta, sem código
+    assert "codigo_dev" not in e.post("/api/senha/esqueci", json={"email": "ninguem@exemplo.com"}).json()
+
+
+def test_senha_bloqueia_depois_de_muitos_erros(cli):
+    from app import senha_rotas
+    c, _ = cli
+    senha_rotas._erros.clear()
+    for _ in range(senha_rotas.MAX_ERROS):
+        c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"})
+    assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"}).status_code == 429
+    senha_rotas._erros.clear()

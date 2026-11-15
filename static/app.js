@@ -160,6 +160,7 @@
       ${eu.assinante ? `<div class="cartao"><div class="lin"><span>Plano ${esc((eu.planos.find((x) => x.codigo === eu.plano) || {}).nome || '')}</span><b style="color:var(--ac)">Ativo</b></div><div class="lin"><span>Produtos nesta semana</span><b>${eu.escolhidos_semana}${eu.limite_semana ? ' de ' + eu.limite_semana : ''}</b></div>${eu.plano !== 'elite' ? '<button class="btn btn-sec" data-planos>Subir de plano</button>' : ''}</div>` :
         cartoesPlanos(eu.planos)}
       <button class="btn btn-sec" style="width:100%;margin-top:24px" onclick="SBTour.abrir()">Ver o tour</button>
+      <button class="btn btn-sec" style="width:100%;margin-top:12px" data-senha>Minha senha</button>
       <button class="btn btn-sec" style="width:100%;margin-top:12px" id="sair">Sair da conta</button>`
     $('#f-ap').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/eu/apelido', { method: 'POST', body: JSON.stringify({ apelido: $('#ap').value }) }); toast('Apelido salvo'); telaPerfil() } catch (er) { toast(er.message, 1) } }
     $('#sair').onclick = async () => { await fetch('/api/sair', { method: 'POST' }); location.href = '/' }
@@ -175,7 +176,7 @@
       <div class="cartao">
         <form id="f-pix" class="busca"><input id="pix" maxlength="120" placeholder="Sua chave PIX" value="${esc(w.pix || '')}"><button class="btn btn-sec" type="submit">Salvar</button></form>
         <button class="btn btn-pri grande" id="b-saque" style="width:100%;margin-top:12px" ${w.disponivel < w.saque_minimo ? 'disabled' : ''}>Sacar ${brl(w.disponivel)}</button>
-        <small style="color:var(--mut);display:block;margin-top:8px">Saque mínimo ${brl(w.saque_minimo)}. O PIX cai em até 2 dias úteis. Você fica com ${Math.round((1 - w.taxa_casa) * 100)}% da comissão de cada venda pelo Link Rendaí.</small>
+        <small style="color:var(--mut);display:block;margin-top:8px">Saque mínimo ${brl(w.saque_minimo)}. O PIX cai em até 2 dias úteis. Os valores já são a sua parte de cada venda.</small>
       </div>
       <div class="sec-t"><h2>Vendas pelo Link Rendaí</h2></div>
       ${w.vendas.length ? `<div class="cartao">${w.vendas.map((v) => `<div class="lin"><span>${esc(v.titulo || 'Produto')}<br><small style="color:var(--mut)">${dt(v.criado)} · ${est[v.estado] || v.estado}${v.estado === 'pendente' ? ' até ' + dt(v.libera_em) : ''}</small></span><b>${brl(v.parte_usuario)}</b></div>`).join('')}</div>`
@@ -201,7 +202,7 @@
         <small>${p.comissao_estimada ? 'Comissão média estimada de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + ', já descontada a taxa da plataforma.' : 'Comissão de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + '.'}</small></div>` : ''}
       ${p.frase ? `<div class="frase">${esc(p.frase)}</div>` : ''}
       ${p.link_rendai ? `<div class="link-rd"><div class="lr-top"><span class="selo-rd">Link Rendaí</span><b>Sem precisar se afiliar</b></div>
-        <p>Divulgue este link: a venda é registrada no seu nome, você fica com <b>${Math.round((1 - p.taxa_casa) * 100)}% da comissão</b> e saca por PIX depois da garantia.</p>
+        <p>Divulgue este link: a venda é registrada no seu nome, você ganha <b>${p.ganho_venda ? brl(p.ganho_venda * (1 - p.taxa_casa)) : 'sua parte'} por venda</b> e saca por PIX depois da garantia.</p>
         <div class="ml-linha"><input readonly value="${esc(p.link_rendai)}" aria-label="Seu link Rendaí"><button class="btn btn-pri copiar" data-copiar="${esc(p.link_rendai)}">Copiar</button></div></div>` : ''}
       ${p.link_rendai ? '<div class="ou-af">ou, se preferir, afilie-se você mesmo:</div>' : ''}
       <ol class="passos-af">

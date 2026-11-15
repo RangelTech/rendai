@@ -21,7 +21,7 @@ import httpx
 from app.db import Banco, agora
 
 log = logging.getLogger("rendai.carteira")
-SAQUE_MIN = 20.0
+SAQUE_MIN = 100.0
 GARANTIA_PADRAO_S = 30 * 86400
 ESTADOS_OK = {"APPROVED", "COMPLETE", "COMPLETED"}
 ESTADOS_VOLTA = {"REFUNDED", "CHARGEBACK", "CANCELLED", "CANCELED", "PROTESTED", "PARTIALLY_REFUNDED"}

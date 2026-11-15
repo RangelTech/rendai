@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import senha_rotas
 from app import afiliado, auth, carteira, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
 
@@ -66,7 +67,7 @@ class Config:
     demo_senha: str = ""
     afiliados: dict = None            # {"hotmart": {"cookie": "..."}} sessão de conta de afiliado (cofre: rendai-afiliados.env)
     hotmart: dict = None              # {"client_id","client_secret","basic"} API da conta da casa (vendas do link Rendaí)
-    taxa_casa: float = 0.10           # parte da comissão que fica com a casa no link Rendaí
+    taxa_casa: float = 0.50           # parte da comissão que fica com a casa no link Rendaí
 
     def __post_init__(self):
         self.checkouts = self.checkouts or {}
@@ -88,7 +89,7 @@ def carregar() -> Config:
                   lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""),
                   demo_email=e("RENDAI_DEMO_EMAIL", ""), demo_senha=e("RENDAI_DEMO_SENHA", ""),
                   afiliados=json.loads(e("RENDAI_AFILIADOS", "") or "{}"), hotmart=json.loads(e("RENDAI_HOTMART", "") or "{}"),
-                  taxa_casa=float(e("RENDAI_TAXA_CASA", "0.10") or 0.10))
+                  taxa_casa=float(e("RENDAI_TAXA_CASA", "0.50") or 0.50))
 
 
 def _rotina_coleta(db: Banco, parar: threading.Event, cfg_rotina=None) -> None:
@@ -209,19 +210,13 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         return resp
 
 
-    @app.post("/api/entrar/senha")
-    async def entrar_senha(request: Request):
-        """Só a conta de DEMONSTRAÇÃO entra com senha (para apresentar o produto); clientes entram pelo código no e-mail."""
-        b = await request.json()
-        email = auth.normalizar_email(b.get("email"))
-        if not (cfg.demo_email and cfg.demo_senha and email == cfg.demo_email.lower()
-                and hmac.compare_digest(str(b.get("senha") or ""), cfg.demo_senha)):
-            raise HTTPException(400, "e-mail ou senha incorretos (a senha vale só para a conta de demonstração)")
-        u = auth.usuario_por_email(db, email)
+    def _login(u: dict) -> JSONResponse:
         token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
         resp = JSONResponse({"ok": True})
         resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
         return resp
+
+    senha_rotas.registrar(app, db, cfg, mailer, _login, usuario)  # senha (padrão), código (opção), esqueci a senha
 
     @app.post("/api/sair")
     def sair(request: Request):
