@@ -124,3 +124,12 @@ input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;bac
 .pv-de s{color:var(--mut)}
 .pc .ganho{font:800 14px "Display";color:var(--ac)}
 @media (max-width:960px){.calc,.planos.tres{grid-template-columns:1fr}}
+
+.plats{padding:24px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);background:var(--bg2)}
+.plats .wrap{display:flex;align-items:center;gap:24px;flex-wrap:wrap;justify-content:center}
+.plats-t{color:var(--mut);font-size:14px}
+.plats-l{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.pt{display:inline-flex;align-items:center;gap:8px;font:800 16px "Display";color:var(--mut);background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:8px 14px}
+.pt small{font:600 11px system-ui;color:var(--mut);opacity:.8}
+.pt.on{color:var(--fg);border-color:rgba(34,229,139,.4)}
+.pt.on i{width:8px;height:8px;border-radius:50%;background:var(--ac)}

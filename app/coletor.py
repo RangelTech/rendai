@@ -170,7 +170,9 @@ def varrer(db: Banco, buscas: list[str] | None = None, pausa=(1.5, 4.0)) -> int:
 def conferir_vitrine(db: Banco, limite: int = 120, idade_s: float = 6 * 3600, pausa=(1.0, 2.5)) -> int:
     """Confere os produtos que aparecem na vitrine (os mais quentes) e tira da vitrine quem passou de 24 h sem conferência."""
     db.exec("UPDATE produtos SET ativo=0, motivo_inativo='sem conferência há mais de 24 h' WHERE ativo=1 AND conferido<?", (agora() - 24 * 3600,))
-    alvos = db.todos("SELECT id FROM produtos WHERE ativo=1 AND conferido<? ORDER BY temperatura DESC LIMIT ?", (agora() - idade_s, limite))
+    # sem preço ainda (acabou de entrar pela varredura) também entra: o preço é a base do "ganhe até R$ X"
+    alvos = db.todos("SELECT id FROM produtos WHERE ativo=1 AND (conferido<? OR (preco IS NULL AND oferta IS NOT NULL)) ORDER BY temperatura DESC LIMIT ?",
+                     (agora() - idade_s, limite))
     with httpx.Client(headers={"User-Agent": UA, "Accept-Language": "pt-BR"}, timeout=30, follow_redirects=True) as c:
         for a in alvos:
             conferir(db, c, a["id"])
