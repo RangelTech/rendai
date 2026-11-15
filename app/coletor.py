@@ -92,7 +92,7 @@ def preco_hotmart(cliente: httpx.Client, codigo: str, oferta: str) -> float | No
         return None
     d = json.loads(m.group(1))
     for v in d:
-        if isinstance(v, dict) and {"amount", "installments", "offer"} <= set(v):
+        if isinstance(v, dict) and {"amount", "offer"} <= set(v):  # "installments" nem sempre vem (variante da página)
             alvo = d[v["amount"]] if isinstance(v["amount"], int) else v["amount"]
             if isinstance(alvo, dict) and "value" in alvo:
                 val = d[alvo["value"]] if isinstance(alvo["value"], int) and alvo["value"] < len(d) else alvo["value"]
