@@ -12,15 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import senha_rotas
-from app import afiliado, auth, carteira, coletor, jogo, kit, mailer
+from app import afiliado, auth, carteira, repasse, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 ESTATICO = Path(__file__).resolve().parent.parent / "static"
+log = logging.getLogger("rendai")
 COOKIE = "rendai_s"
 COMISSAO_ESTIMADA = 0.5   # comissão média dos produtos afiliáveis da Hotmart (até lermos a real com conta de afiliado)
 TAXA_PLATAFORMA = 0.10     # parte que a plataforma fica antes de repassar a comissão (aprox.)
@@ -316,8 +317,10 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         lib = auth.assinante(u) and pode_pegar(u, pid)
         hist = db.todos("SELECT dia, avaliacoes, alunos FROM historico WHERE produto=? ORDER BY dia DESC LIMIT 14", (pid,))
         ml = db.um("SELECT link FROM links WHERE usuario=? AND produto=?", (u["id"], pid))
-        lr = carteira.link_rendai(p["link_casa"], carteira.codigo_ref(db, u)) if p.get("link_casa") and lib else ""
-        return {**produto_publico(p), "link_rendai": lr, "taxa_casa": cfg.taxa_casa, "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1], "meu_link": ml["link"] if ml else ""}
+        termos_ok = u.get("termos_versao") == repasse.TERMOS_VERSAO
+        lr = f"{cfg.base_url}/r/{carteira.codigo_ref(db, u)}/{pid}" if p.get("link_casa") and lib and termos_ok else ""
+        return {**produto_publico(p), "link_rendai": lr, "taxa_casa": cfg.taxa_casa, "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1], "meu_link": ml["link"] if ml else "",
+                "precisa_termos": bool(p.get("link_casa")) and lib and not termos_ok, "cai_em": repasse.estimativa_produto(p.get("plataforma"))}
 
     @app.post("/api/produtos/{pid}/link")
     async def salvar_link(pid: str, request: Request):
@@ -421,6 +424,51 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         db.exec("UPDATE usuarios SET pix=? WHERE id=?", (pix, u["id"]))
         return carteira.resumo(db, u["id"])
 
+    @app.post("/api/termos/aceitar")
+    async def aceitar_termos(request: Request):
+        u = usuario(request)
+        b = await request.json()
+        if b.get("versao") != repasse.TERMOS_VERSAO:
+            raise HTTPException(409, "os termos mudaram; recarregue a página")
+        db.exec("UPDATE usuarios SET termos_versao=?, termos_aceite=? WHERE id=?", (repasse.TERMOS_VERSAO, str(agora()), u["id"]))
+        return {"ok": True, "versao": repasse.TERMOS_VERSAO}
+
+    @app.post("/api/carteira/recebedor")
+    async def salvar_recebedor(request: Request):
+        u = usuario(request)
+        b = await request.json()
+        nome = str(b.get("nome") or "").strip()[:120]
+        doc = repasse.so_digitos(str(b.get("doc") or ""))
+        pix = str(b.get("pix") or "").strip()[:120]
+        if len(nome) < 5:
+            raise HTTPException(422, "informe o nome completo (ou a razão social)")
+        if not repasse.doc_ok(doc):
+            raise HTTPException(422, "CPF ou CNPJ inválido")
+        erro = repasse.chave_pix_ok(pix, doc)
+        if erro:
+            raise HTTPException(422, erro)
+        db.exec("UPDATE usuarios SET rec_nome=?, rec_doc=?, pix=? WHERE id=?", (nome, doc, pix, u["id"]))
+        return carteira.resumo(db, u["id"])
+
+    @app.get("/r/{codigo}/{pid}")
+    def redirecionar(codigo: str, pid: str, request: Request):
+        """Link divulgado pelo cliente: registra o clique e manda para o link da casa com o código dele."""
+        if not re.fullmatch(r"[0-9a-f]{8}", codigo):
+            raise HTTPException(404, "link inválido")
+        p = db.um("SELECT link_casa FROM produtos WHERE id=?", (pid,))
+        if not p or not p["link_casa"]:
+            return RedirectResponse(cfg.base_url, status_code=302)
+        db.exec("INSERT INTO cliques(codigo,produto,criado,origem) VALUES(?,?,?,?)", (codigo, pid, agora(), (request.headers.get("referer") or "")[:200]))
+        return RedirectResponse(carteira.link_rendai(p["link_casa"], codigo), status_code=302)
+
+    @app.get("/termos")
+    def termos():
+        return FileResponse(ESTATICO / "termos.html")
+
+    @app.get("/admin/pagamentos")
+    def admin_pagamentos_pagina():
+        return FileResponse(ESTATICO / "admin-pagamentos.html")
+
     @app.post("/api/carteira/saque")
     def sacar(request: Request):
         u = usuario(request)
@@ -458,14 +506,77 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
     @app.get("/api/admin/saques")
     def admin_saques(request: Request):
         exigir_admin(request)
-        return {"saques": db.todos("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario ORDER BY s.criado DESC LIMIT 200"),
+        lst = db.todos("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario ORDER BY CASE s.estado WHEN 'pedido' THEN 0 ELSE 1 END, COALESCE(s.prazo, s.criado) LIMIT 300")
+        a_pagar = [x for x in lst if x["estado"] == "pedido"]
+        recebido = db.um("SELECT COALESCE(SUM(comissao),0) s FROM vendas_casa WHERE estado='liberada'")["s"]
+        pago = db.um("SELECT COALESCE(SUM(valor),0) s FROM saques WHERE estado='pago'")["s"]
+        return {"saques": lst, "a_pagar_total": round(sum(x["valor"] for x in a_pagar), 2), "a_pagar_n": len(a_pagar),
+                "recebido_das_plataformas": round(recebido, 2), "ja_pago": round(pago, 2),
+                "alerta": round(sum(x["valor"] for x in a_pagar) + pago, 2) > round(recebido, 2),
                 "casa": db.um("SELECT COALESCE(SUM(parte_casa),0) casa, COALESCE(SUM(comissao),0) bruto, COUNT(*) n FROM vendas_casa WHERE estado!='reembolsada'")}
 
     @app.post("/api/admin/saques/{sid}/pago")
-    def admin_saque_pago(sid: int, request: Request):
+    async def admin_saque_pago(sid: int, request: Request):
+        """Marca como pago. Corpo opcional: JSON {transacao_pix} ou o comprovante cru (imagem/PDF) com x-arquivo."""
         exigir_admin(request)
-        db.exec("UPDATE saques SET estado='pago', pago=? WHERE id=? AND estado='pedido'", (agora(), sid))
+        s = db.um("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario WHERE s.id=? AND s.estado='pedido'", (sid,))
+        if not s:
+            raise HTTPException(404, "saque não encontrado ou já resolvido")
+        comp, tx = None, None
+        tipo = request.headers.get("content-type", "")
+        bruto = await request.body()
+        if bruto and "json" in tipo:
+            tx = str((json.loads(bruto) or {}).get("transacao_pix") or "")[:80] or None
+        elif bruto:
+            nome = (request.headers.get("x-arquivo") or "comprovante.png").lower()
+            ext = nome.rsplit(".", 1)[-1] if "." in nome else "png"
+            if ext not in ("png", "jpg", "jpeg", "pdf"):
+                raise HTTPException(422, "comprovante: PNG, JPG ou PDF")
+            pasta = Path(cfg.dados) / "comprovantes"
+            pasta.mkdir(parents=True, exist_ok=True)
+            comp = f"saque{sid}.{ext}"
+            (pasta / comp).write_bytes(bruto[:10 * 1024 * 1024])
+        db.exec("UPDATE saques SET estado='pago', pago=?, comprovante=COALESCE(?,comprovante), transacao_pix=COALESCE(?,transacao_pix) WHERE id=?", (agora(), comp, tx, sid))
+        try:
+            v = f"R$ {s['valor']:.2f}".replace(".", ",")
+            mailer.enviar(cfg, s["email"], f"Seu saque de {v} foi pago", f"Pagamos {v} na sua chave Pix {s['pix']}. Confira no seu banco.",
+                          f'<p style="font-size:16px">Pagamos <b>{v}</b> na sua chave Pix <b>{s["pix"]}</b>.</p><p>Confira no seu banco e na aba Carteira do Rendaí.</p>')
+        except Exception as e:  # noqa: BLE001
+            log.warning("aviso de saque pago falhou: %s", e)
         return {"ok": True}
+
+    @app.post("/api/admin/saques/{sid}/recusar")
+    async def admin_saque_recusar(sid: int, request: Request):
+        exigir_admin(request)
+        motivo = str((await request.json()).get("motivo") or "").strip()[:300]
+        if len(motivo) < 5:
+            raise HTTPException(422, "diga o motivo (o cliente vê)")
+        cur = db.exec("UPDATE saques SET estado='recusado', motivo=?, pago=? WHERE id=? AND estado='pedido'", (motivo, agora(), sid))
+        if not cur.rowcount:
+            raise HTTPException(404, "saque não encontrado ou já resolvido")
+        return {"ok": True}
+
+    @app.get("/api/admin/saques/{sid}/comprovante")
+    def admin_comprovante(sid: int, request: Request):
+        exigir_admin(request)
+        s = db.um("SELECT comprovante FROM saques WHERE id=?", (sid,))
+        if not s or not s["comprovante"]:
+            raise HTTPException(404, "sem comprovante")
+        return FileResponse(Path(cfg.dados) / "comprovantes" / s["comprovante"])
+
+    @app.get("/api/admin/saques.csv")
+    def admin_saques_csv(request: Request):
+        exigir_admin(request)
+        import csv
+        import io as _io
+        out = _io.StringIO()
+        w = csv.writer(out, delimiter=";")
+        w.writerow(["id", "email", "nome", "documento", "chave_pix", "valor", "estado", "pedido_em", "pago_em", "motivo"])
+        from datetime import datetime as _dt
+        f = lambda t: _dt.fromtimestamp(float(t)).strftime("%d/%m/%Y %H:%M") if t else ""  # noqa: E731
+        for x in db.todos("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario ORDER BY s.criado"):
+            w.writerow([x["id"], x["email"], x["nome"] or "", x["doc"] or "", x["pix"], f"{x['valor']:.2f}".replace(".", ","), x["estado"], f(x["criado"]), f(x["pago"]), x["motivo"] or ""])
+        return Response(out.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=saques-rendai.csv"})
 
     @app.get("/api/admin/afiliados")
     def admin_afiliados(request: Request):

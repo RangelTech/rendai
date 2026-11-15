@@ -174,16 +174,23 @@
     t.innerHTML = `<div class="sec-t"><h2>Carteira</h2></div>
       <div class="cart-num"><div><span>Disponível para saque</span><b>${brl(w.disponivel)}</b></div><div><span>Na garantia</span><b>${brl(w.a_liberar)}</b></div><div><span>Já sacado</span><b>${brl(w.sacado)}</b></div></div>
       <div class="cartao">
-        <form id="f-pix" class="busca"><input id="pix" maxlength="120" placeholder="Sua chave PIX" value="${esc(w.pix || '')}"><button class="btn btn-sec" type="submit">Salvar</button></form>
-        <button class="btn btn-pri grande" id="b-saque" style="width:100%;margin-top:12px" ${w.disponivel < w.saque_minimo ? 'disabled' : ''}>Sacar ${brl(w.disponivel)}</button>
-        <small style="color:var(--mut);display:block;margin-top:8px">Saque mínimo ${brl(w.saque_minimo)}. O PIX cai em até 2 dias úteis. Os valores já são a sua parte de cada venda.</small>
+        <strong>Quem recebe</strong>
+        <form id="f-rec" class="form-rec">
+          <input id="rec-nome" maxlength="120" placeholder="Nome completo (ou razão social)" value="${esc(w.rec_nome || '')}">
+          <input id="rec-doc" maxlength="18" placeholder="CPF ou CNPJ" value="${esc(w.rec_doc || '')}">
+          <input id="rec-pix" maxlength="120" placeholder="Chave Pix (do mesmo CPF/CNPJ)" value="${esc(w.pix || '')}">
+          <button class="btn btn-sec" type="submit">Salvar</button>
+        </form>
+        ${w.saque_aberto ? `<div class="aviso-saque">Saque de <b>${brl(w.saque_aberto.valor)}</b> aguardando pagamento. Cai até <b>${new Date(w.saque_aberto.prazo * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</b>.</div>`
+          : `<button class="btn btn-pri grande" id="b-saque" style="width:100%;margin-top:12px" ${w.disponivel < w.saque_minimo ? 'disabled' : ''}>Solicitar saque de ${brl(w.disponivel)}</button>`}
+        <small style="color:var(--mut);display:block;margin-top:8px">Saque mínimo ${brl(w.saque_minimo)}. Pago por Pix em até 2 dias depois do pedido. Os valores já são a sua parte de cada venda. <a href="/termos" target="_blank">Termos</a></small>
       </div>
       <div class="sec-t"><h2>Vendas pelo Link Rendaí</h2></div>
       ${w.vendas.length ? `<div class="cartao">${w.vendas.map((v) => `<div class="lin"><span>${esc(v.titulo || 'Produto')}<br><small style="color:var(--mut)">${dt(v.criado)} · ${est[v.estado] || v.estado}${v.estado === 'pendente' ? ' até ' + dt(v.libera_em) : ''}</small></span><b>${brl(v.parte_usuario)}</b></div>`).join('')}</div>`
         : '<div class="vazio">Nenhuma venda ainda. Abra um produto com o selo <b>Link Rendaí</b>, copie o link e divulgue com o kit.</div>'}
-      ${w.saques.length ? `<div class="sec-t"><h2>Saques</h2></div><div class="cartao">${w.saques.map((s) => `<div class="lin"><span>${dt(s.criado)} · ${s.estado === 'pago' ? 'Pago' : s.estado === 'pedido' ? 'Pedido' : 'Recusado'}</span><b>${brl(s.valor)}</b></div>`).join('')}</div>` : ''}`
-    $('#f-pix').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/carteira/pix', { method: 'POST', body: JSON.stringify({ pix: $('#pix').value }) }); toast('Chave PIX salva'); telaCarteira() } catch (er) { toast(er.message, 1) } }
-    $('#b-saque').onclick = async () => { try { await api('/api/carteira/saque', { method: 'POST' }); toast('Saque pedido!'); telaCarteira() } catch (er) { toast(er.message, 1) } }
+      ${w.saques.length ? `<div class="sec-t"><h2>Saques</h2></div><div class="cartao">${w.saques.map((s) => `<div class="lin"><span>${dt(s.criado)} · ${s.estado === 'pago' ? 'Pago' : s.estado === 'pedido' ? 'Aguardando pagamento' : 'Recusado'}${s.motivo ? `<br><small style="color:var(--mut)">${esc(s.motivo)}</small>` : ''}</span><b>${brl(s.valor)}</b></div>`).join('')}</div>` : ''}`
+    $('#f-rec').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/carteira/recebedor', { method: 'POST', body: JSON.stringify({ nome: $('#rec-nome').value, doc: $('#rec-doc').value, pix: $('#rec-pix').value }) }); toast('Recebedor salvo'); telaCarteira() } catch (er) { toast(er.message, 1) } }
+    const bs = $('#b-saque'); if (bs) bs.onclick = async () => { try { await api('/api/carteira/saque', { method: 'POST' }); toast('Saque solicitado! Cai em até 2 dias.'); telaCarteira() } catch (er) { toast(er.message, 1) } }
   }
 
   // detalhe do produto: passo a passo de afiliação, kit da IA, divulguei, registrar venda
@@ -201,8 +208,11 @@
         <div class="gb-res"><div><span>na semana</span><b id="sim-s"></b></div><div><span>no mês</span><b id="sim-m"></b></div></div>
         <small>${p.comissao_estimada ? 'Comissão média estimada de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + ', já descontada a taxa da plataforma.' : 'Comissão de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + '.'}</small></div>` : ''}
       ${p.frase ? `<div class="frase">${esc(p.frase)}</div>` : ''}
+      ${p.precisa_termos ? `<div class="link-rd"><div class="lr-top"><span class="selo-rd">Link Rendaí</span><b>Sem precisar se afiliar</b></div>
+        <p>Para usar o Link Rendaí, leia e aceite os <a href="/termos" target="_blank">termos de uso</a> (como funciona o repasse, prazos e saque).</p>
+        <button class="btn btn-pri" id="b-termos">Li e aceito os termos</button></div>` : ''}
       ${p.link_rendai ? `<div class="link-rd"><div class="lr-top"><span class="selo-rd">Link Rendaí</span><b>Sem precisar se afiliar</b></div>
-        <p>Divulgue este link: a venda é registrada no seu nome, você ganha <b>${p.ganho_venda ? brl(p.ganho_venda * (1 - p.taxa_casa)) : 'sua parte'} por venda</b> e saca por PIX depois da garantia.</p>
+        <p>Divulgue este link: a venda é registrada no seu nome, você ganha <b>${p.ganho_venda ? brl(p.ganho_venda * (1 - p.taxa_casa)) : 'sua parte'} por venda</b>. A comissão fica disponível para saque em cerca de <b>${p.cai_em ? p.cai_em.pix : 10} dias</b> (Pix e boleto) ou <b>${p.cai_em ? p.cai_em.cartao : 33} dias</b> (cartão).</p>
         <div class="ml-linha"><input readonly value="${esc(p.link_rendai)}" aria-label="Seu link Rendaí"><button class="btn btn-pri copiar" data-copiar="${esc(p.link_rendai)}">Copiar</button></div></div>` : ''}
       ${p.link_rendai ? '<div class="ou-af">ou, se preferir, afilie-se você mesmo:</div>' : ''}
       <ol class="passos-af">
@@ -278,3 +288,15 @@
   }
   carregarEu().then(() => trocar('inicio')).catch(() => {})
 })()
+
+// aceite dos termos do Link Rendaí (spec 44 2.8)
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('#b-termos'); if (!b) return
+  b.disabled = true
+  try {
+    const v = await (await fetch('/api/carteira')).json()
+    const r = await fetch('/api/termos/aceitar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versao: v.termos_versao }) })
+    if (!r.ok) throw new Error()
+    location.reload()
+  } catch { b.disabled = false; b.textContent = 'Não deu certo, tente de novo' }
+})

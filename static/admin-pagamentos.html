@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Rendaí: pagamentos</title>
+<link rel="stylesheet" href="/s/base.css">
+<style>
+main{max-width:1000px;margin:0 auto;padding:32px 20px 80px}
+.topo-p{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.resumo{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:24px 0}
+.resumo div{background:var(--card,#17171f);border:1px solid var(--bd,#2a2a36);border-radius:16px;padding:16px}
+.resumo span{color:var(--mut,#9a9aa8);font-size:13px}.resumo b{display:block;font-size:24px;margin-top:4px}
+.alerta{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.5);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.item{background:var(--card,#17171f);border:1px solid var(--bd,#2a2a36);border-radius:16px;padding:16px;margin-bottom:12px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+.item.venc{border-color:#ff6b6b}.item.hoje{border-color:#ffb547}
+.item .l{font-size:14px;color:var(--mut,#9a9aa8);margin-top:4px}
+.copia{background:none;border:1px solid var(--bd,#2a2a36);color:inherit;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer;margin-left:6px}
+.acoes-p{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.abas-p button{background:none;border:0;color:var(--mut,#9a9aa8);padding:8px 12px;cursor:pointer;font-weight:700}.abas-p button.on{color:#fff;border-bottom:2px solid var(--ac,#22e58b)}
+@media (max-width:640px){.resumo{grid-template-columns:1fr}.item{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <div class="topo-p"><h1 style="margin:0">Pagamentos do Link Rendaí</h1><div><a class="btn btn-sec" id="b-csv" href="#">Exportar CSV</a> <button class="btn btn-sec" id="b-sair">Sair</button></div></div>
+  <div id="alerta"></div>
+  <div class="resumo"><div><span>A pagar agora</span><b id="r-pagar">–</b></div><div><span>Recebido das plataformas (liberado)</span><b id="r-rec">–</b></div><div><span>Já pago aos clientes</span><b id="r-pago">–</b></div></div>
+  <div class="abas-p"><button class="on" data-f="pedido">A pagar</button><button data-f="pago">Pagos</button><button data-f="recusado">Recusados</button></div>
+  <div id="lista"><div class="vazio">Carregando…</div></div>
+</main>
+<script>
+;(() => {
+  const $ = (s) => document.querySelector(s)
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+  const brl = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const dt = (t) => t ? new Date(t * 1000).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+  const doc = (d) => !d ? '' : d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+  let chave = ''
+  try { chave = localStorage.getItem('rendai_admin') || '' } catch {}
+  if (!chave) { chave = prompt('Chave de administrador do Rendaí:') || ''; try { localStorage.setItem('rendai_admin', chave) } catch {} }
+  const api = async (url, op = {}) => {
+    const r = await fetch(url, { ...op, headers: { 'x-admin-key': chave, ...(op.headers || {}) } })
+    if (r.status === 401 || r.status === 403) { try { localStorage.removeItem('rendai_admin') } catch {} ; alert('Chave inválida.'); location.reload(); throw new Error('chave') }
+    let j = {}; try { j = await r.json() } catch {}
+    if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : 'Falhou')
+    return j
+  }
+  let filtro = 'pedido', dados = null
+  async function carregar() {
+    dados = await api('/api/admin/saques')
+    $('#r-pagar').textContent = `${brl(dados.a_pagar_total)} (${dados.a_pagar_n})`
+    $('#r-rec').textContent = brl(dados.recebido_das_plataformas)
+    $('#r-pago').textContent = brl(dados.ja_pago)
+    $('#alerta').innerHTML = dados.alerta ? '<div class="alerta">Atenção: o total a pagar + o já pago passa do que as plataformas já liberaram. Confira antes de pagar (regra de ouro: só repassar o que já recebemos).</div>' : ''
+    desenhar()
+  }
+  function desenhar() {
+    const agora = Date.now() / 1000
+    const l = dados.saques.filter((s) => s.estado === filtro)
+    $('#lista').innerHTML = l.length ? l.map((s) => {
+      const pz = Number(s.prazo || 0), cls = filtro === 'pedido' ? (pz && pz < agora ? 'venc' : pz && pz - agora < 86400 ? 'hoje' : '') : ''
+      return `<div class="item ${cls}"><div><b>${esc(s.nome || s.email)}</b> · ${esc(doc(s.doc))}
+        <div class="l">Chave Pix: <b>${esc(s.pix)}</b><button class="copia" data-c="${esc(s.pix)}">copiar</button> · Valor: <b>${brl(s.valor)}</b><button class="copia" data-c="${Number(s.valor).toFixed(2).replace('.', ',')}">copiar</button></div>
+        <div class="l">Pedido ${dt(s.criado)}${pz ? ' · prazo ' + dt(pz) + (cls === 'venc' ? ' (ATRASADO)' : '') : ''}${s.pago ? ' · resolvido ' + dt(s.pago) : ''}${s.motivo ? ' · motivo: ' + esc(s.motivo) : ''} · ${esc(s.email)}</div></div>
+        <div class="acoes-p">${filtro === 'pedido' ? `<label class="btn btn-pri">Marcar como pago<input type="file" accept="image/*,application/pdf" data-pago="${s.id}" hidden></label><button class="btn btn-sec" data-semcomp="${s.id}">Pago sem comprovante</button><button class="btn btn-sec" data-recusar="${s.id}">Recusar</button>` : s.comprovante ? `<button class="btn btn-sec" data-ver="${s.id}">Comprovante</button>` : ''}</div></div>`
+    }).join('') : '<div class="vazio">Nada aqui.</div>'
+  }
+  document.addEventListener('click', async (e) => {
+    const c = e.target.closest('[data-c]'); if (c) { await navigator.clipboard.writeText(c.dataset.c); c.textContent = 'copiado'; return }
+    const f = e.target.closest('[data-f]'); if (f) { filtro = f.dataset.f; document.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('on', x === f)); desenhar(); return }
+    const sc = e.target.closest('[data-semcomp]'); if (sc) { if (!confirm('Confirmar que o Pix foi feito?')) return; const tx = prompt('ID da transação Pix (opcional):') || ''; await api(`/api/admin/saques/${sc.dataset.semcomp}/pago`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transacao_pix: tx }) }); carregar(); return }
+    const rc = e.target.closest('[data-recusar]'); if (rc) { const m = prompt('Motivo (o cliente vê):'); if (!m) return; try { await api(`/api/admin/saques/${rc.dataset.recusar}/recusar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motivo: m }) }); carregar() } catch (er) { alert(er.message) } return }
+    const v = e.target.closest('[data-ver]'); if (v) { const r = await fetch(`/api/admin/saques/${v.dataset.ver}/comprovante`, { headers: { 'x-admin-key': chave } }); const b = await r.blob(); window.open(URL.createObjectURL(b)); return }
+    if (e.target.id === 'b-sair') { try { localStorage.removeItem('rendai_admin') } catch {}; location.reload() }
+    if (e.target.id === 'b-csv') { e.preventDefault(); const r = await fetch('/api/admin/saques.csv', { headers: { 'x-admin-key': chave } }); const b = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'saques-rendai.csv'; a.click() }
+  })
+  document.addEventListener('change', async (e) => {
+    const i = e.target.closest('[data-pago]'); if (!i || !i.files[0]) return
+    const f = i.files[0]
+    await api(`/api/admin/saques/${i.dataset.pago}/pago`, { method: 'POST', headers: { 'x-arquivo': f.name, 'Content-Type': f.type || 'application/octet-stream' }, body: f })
+    carregar()
+  })
+  carregar().catch(() => {})
+})()
+</script>
+</body>
+</html>

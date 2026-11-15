@@ -70,9 +70,18 @@ class Banco:
             if col not in cols:
                 self.con.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo}")
         cols_u = {r[1] for r in self.con.execute("PRAGMA table_info(usuarios)")}
-        for col in ("codigo_ref", "pix"):  # link Rendaí (microtransação)
+        for col in ("codigo_ref", "pix", "termos_versao", "termos_aceite", "rec_nome", "rec_doc"):  # link Rendaí + repasse (spec 44 parte 2)
             if col not in cols_u:
                 self.con.execute(f"ALTER TABLE usuarios ADD COLUMN {col} TEXT")
+        cols_s = {r[1] for r in self.con.execute("PRAGMA table_info(saques)")}
+        for col in ("nome", "doc", "prazo", "motivo", "comprovante", "transacao_pix", "forma"):
+            if col not in cols_s:
+                self.con.execute(f"ALTER TABLE saques ADD COLUMN {col} TEXT")
+        cols_v = {r[1] for r in self.con.execute("PRAGMA table_info(vendas_casa)")}
+        for col in ("plataforma", "metodo"):
+            if col not in cols_v:
+                self.con.execute(f"ALTER TABLE vendas_casa ADD COLUMN {col} TEXT")
+        self.con.execute("CREATE TABLE IF NOT EXISTS cliques (id INTEGER PRIMARY KEY, codigo TEXT NOT NULL, produto TEXT NOT NULL, criado REAL NOT NULL, origem TEXT)")
 
     @contextmanager
     def tx(self):

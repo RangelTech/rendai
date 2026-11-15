@@ -67,10 +67,13 @@ def registrar_venda(db: Banco, taxa_casa: float, v: dict) -> str:
     if com <= 0:
         return "sem comissao"
     parte = round(com * (1 - taxa_casa), 2)
-    libera = float(v.get("garantia_ate") or agora() + GARANTIA_PADRAO_S)
+    from app import repasse
+    libera = repasse.libera_cliente(float(v.get("criado") or agora()), v.get("plataforma") or "hotmart", v.get("metodo"),
+                                    float(v["garantia_ate"]) if v.get("garantia_ate") else None, float(v["liberado_em"]) if v.get("liberado_em") else None)
     estado = "liberada" if status in ("COMPLETE", "COMPLETED") or libera <= agora() else "pendente"
-    db.exec("""INSERT INTO vendas_casa(id,usuario,produto,comissao,parte_usuario,parte_casa,estado,libera_em,criado)
-               VALUES(?,?,?,?,?,?,?,?,?)""", (v["transacao"], u["id"], v.get("produto"), com, parte, round(com - parte, 2), estado, libera, agora()))
+    db.exec("""INSERT INTO vendas_casa(id,usuario,produto,comissao,parte_usuario,parte_casa,estado,libera_em,criado,plataforma,metodo)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (v["transacao"], u["id"], v.get("produto"), com, parte, round(com - parte, 2), estado, libera, agora(),
+                                                v.get("plataforma") or "hotmart", v.get("metodo")))
     return "nova"
 
 
@@ -83,21 +86,30 @@ def resumo(db: Banco, uid: int) -> dict:
     soma = lambda est: round(db.um("SELECT COALESCE(SUM(parte_usuario),0) s FROM vendas_casa WHERE usuario=? AND estado=?", (uid, est))["s"], 2)
     sacado = round(db.um("SELECT COALESCE(SUM(valor),0) s FROM saques WHERE usuario=? AND estado IN ('pedido','pago')", (uid,))["s"], 2)
     liberado = soma("liberada")
-    u = db.um("SELECT pix FROM usuarios WHERE id=?", (uid,))
+    u = db.um("SELECT pix, rec_nome, rec_doc, termos_versao FROM usuarios WHERE id=?", (uid,))
+    from app import repasse
+    aberto = db.um("SELECT id, valor, prazo FROM saques WHERE usuario=? AND estado='pedido' ORDER BY criado DESC LIMIT 1", (uid,))
     return {"a_liberar": soma("pendente"), "liberado_total": liberado, "disponivel": round(max(0.0, liberado - sacado), 2), "sacado": sacado,
-            "pix": u["pix"] if u else None, "saque_minimo": SAQUE_MIN,
+            "pix": u["pix"] if u else None, "rec_nome": u["rec_nome"] if u else None, "rec_doc": u["rec_doc"] if u else None,
+            "termos_ok": bool(u) and u["termos_versao"] == repasse.TERMOS_VERSAO, "termos_versao": repasse.TERMOS_VERSAO,
+            "saque_aberto": aberto, "saque_minimo": SAQUE_MIN,
             "vendas": db.todos("SELECT v.id, v.comissao, v.parte_usuario, v.estado, v.libera_em, v.criado, p.titulo FROM vendas_casa v "
                                "LEFT JOIN produtos p ON p.id=v.produto WHERE v.usuario=? ORDER BY v.criado DESC LIMIT 50", (uid,)),
-            "saques": db.todos("SELECT id, valor, estado, criado, pago FROM saques WHERE usuario=? ORDER BY criado DESC LIMIT 20", (uid,))}
+            "saques": db.todos("SELECT id, valor, estado, criado, pago, prazo, motivo FROM saques WHERE usuario=? ORDER BY criado DESC LIMIT 20", (uid,))}
 
 
 def pedir_saque(db: Banco, uid: int) -> dict:
+    """Solicitação manual (spec 44 2.6.1): congela o disponível; o Lucas paga em até 48 h pelo app do banco."""
+    from app import repasse
     r = resumo(db, uid)
-    if not r["pix"]:
-        raise ValueError("cadastre sua chave PIX antes de sacar")
+    if not (r["pix"] and r["rec_nome"] and r["rec_doc"]):
+        raise ValueError("cadastre o recebedor (nome, CPF ou CNPJ e chave Pix) antes de sacar")
+    if r["saque_aberto"]:
+        raise ValueError("você já tem um saque aguardando pagamento")
     if r["disponivel"] < SAQUE_MIN:
         raise ValueError(f"o saque mínimo é R$ {SAQUE_MIN:.2f}".replace(".", ","))
-    db.exec("INSERT INTO saques(usuario,valor,pix,estado,criado) VALUES(?,?,?,'pedido',?)", (uid, r["disponivel"], r["pix"], agora()))
+    db.exec("INSERT INTO saques(usuario,valor,pix,estado,criado,nome,doc,prazo,forma) VALUES(?,?,?,'pedido',?,?,?,?,'manual')",
+            (uid, r["disponivel"], r["pix"], agora(), r["rec_nome"], r["rec_doc"], agora() + repasse.PRAZO_PAGAMENTO_S))
     return resumo(db, uid)
 
 
@@ -130,7 +142,8 @@ def sincronizar(db: Banco, cfg, dias: int = 45) -> dict:
             j = c.get(base + "/history", params=q).json()
             for it in j.get("items") or []:
                 p = it.get("purchase") or {}
-                vendas[p.get("transaction")] = {"transacao": p.get("transaction"), "status": p.get("status"),
+                vendas[p.get("transaction")] = {"transacao": p.get("transaction"), "status": p.get("status"), "plataforma": "hotmart",
+                                               "metodo": ((p.get("payment") or {}).get("type")), "criado": (p.get("order_date") or 0) / 1000 or None,
                                                "sck": ((p.get("tracking") or {}).get("source_sck")),
                                                "garantia_ate": (p.get("warranty_expire_date") or 0) / 1000 or None,
                                                "produto": f"hotmart:{(it.get('product') or {}).get('id')}"}

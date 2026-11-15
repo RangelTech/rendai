@@ -21,7 +21,7 @@ def produto(db, i, temp=50.0, ativo=1, conferido=None):
 
 @pytest.fixture()
 def cli(tmp_path):
-    app = criar_app(Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="ck", coletar=False,
+    app = criar_app(Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="ck", coletar=False, admin_key="adm",
                            planos_por_produto={"prod-pro": "pro", "prod-elite": "elite"}, checkouts={"start": "https://pay/x"}), iniciar_rotina=False)
     db = app.state.db
     for i in range(1, 8):
@@ -209,35 +209,89 @@ def test_leitor_de_comissao_da_pagina_logada():
 
 
 def test_link_rendai_venda_garantia_e_saque(cli):
-    """Casa afiliada: assinante recebe link com sck; venda entra pendente, libera após garantia, reembolso volta, saque por PIX."""
-    from app import carteira
+    """Casa afiliada (spec 44 parte 2): termos antes do link, link /r/ com clique, prazo + 2 dias úteis, reembolso, recebedor, saque manual."""
+    from app import carteira, repasse
     c, db = cli
     db.exec("UPDATE produtos SET link_casa='https://go.hotmart.com/CASA1' WHERE id='hotmart:1'")
     assinar(c); entrar(c)
     c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:1"})
     p = c.get("/api/produtos/hotmart:1").json()
-    assert p["link_rendai"].startswith("https://go.hotmart.com/CASA1?sck=rd")
-    sck = p["link_rendai"].split("sck=")[1]
-    u = db.um("SELECT id FROM usuarios WHERE email='ze@exemplo.com'")
+    assert p["link_rendai"] == "" and p["precisa_termos"] is True and p["cai_em"]["pix"] >= 2
+    assert c.post("/api/termos/aceitar", json={"versao": "velha"}).status_code == 409
+    assert c.post("/api/termos/aceitar", json={"versao": repasse.TERMOS_VERSAO}).status_code == 200
+    p = c.get("/api/produtos/hotmart:1").json()
+    assert "/r/" in p["link_rendai"] and p["precisa_termos"] is False
+    caminho = p["link_rendai"].split(".net", 1)[-1] if ".net" in p["link_rendai"] else p["link_rendai"].split("://", 1)[1].split("/", 1)[1]
+    caminho = "/" + caminho.lstrip("/")
+    r = c.get(caminho, follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("https://go.hotmart.com/CASA1?sck=rd")
+    assert db.um("SELECT COUNT(*) n FROM cliques")["n"] == 1
+    sck = r.headers["location"].split("sck=")[1]
     tx = 0.50
-    assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 300, "status": "APPROVED", "garantia_ate": agora() + 86400}) == "nova"
-    assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "comissao": 100, "status": "APPROVED", "garantia_ate": agora() - 10}) == "nova"
+    assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 300, "status": "APPROVED", "garantia_ate": agora() + 86400, "metodo": "PIX"}) == "nova"
+    assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "comissao": 100, "status": "APPROVED", "criado": agora() - 40 * 86400, "metodo": "CREDIT_CARD"}) == "nova"
     assert carteira.registrar_venda(db, tx, {"transacao": "T3", "sck": "outra", "comissao": 50}) == "sem dono"
     assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 30, "status": "APPROVED"}) == "ignorada"
+    t1 = db.um("SELECT libera_em FROM vendas_casa WHERE id='T1'")["libera_em"]
+    assert t1 > agora() + 86400  # garantia + 2 dias úteis
     w = c.get("/api/carteira").json()
     assert w["a_liberar"] == 150.0 and w["disponivel"] == 50.0
-    assert c.post("/api/carteira/saque").status_code == 422          # abaixo do mínimo de R$ 100 / sem PIX
-    c.post("/api/carteira/pix", json={"pix": "ze@exemplo.com"})
+    assert c.post("/api/carteira/saque").status_code == 422          # sem recebedor / abaixo do mínimo
+    assert c.post("/api/carteira/recebedor", json={"nome": "Ze da Silva", "doc": "111.111.111-11", "pix": "ze@exemplo.com"}).status_code == 422
+    assert c.post("/api/carteira/recebedor", json={"nome": "Ze da Silva", "doc": "529.982.247-25", "pix": "390.533.447-05"}).status_code == 422  # chave de outro CPF
+    assert c.post("/api/carteira/recebedor", json={"nome": "Ze da Silva", "doc": "529.982.247-25", "pix": "ze@exemplo.com"}).status_code == 200
     assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "status": "REFUNDED"}) == "reembolsada"
     assert c.get("/api/carteira").json()["disponivel"] == 0.0
     db.exec("UPDATE vendas_casa SET libera_em=? WHERE id='T1'", (agora() - 1,))
     assert carteira.liberar_vencidas(db) == 1
-    assert c.post("/api/carteira/saque").status_code == 200
-    w = c.get("/api/carteira").json()
-    assert w["disponivel"] == 0.0 and w["saques"][0]["valor"] == 150.0
+    r = c.post("/api/carteira/saque")
+    assert r.status_code == 200 and r.json()["saque_aberto"]["valor"] == 150.0
+    assert c.post("/api/carteira/saque").status_code == 422  # um aberto por vez
+    s = db.um("SELECT * FROM saques ORDER BY id DESC LIMIT 1")
+    assert s["nome"] == "Ze da Silva" and s["doc"] == "52998224725" and abs(float(s["prazo"]) - float(s["criado"]) - 48 * 3600) < 1
     k = c.post("/api/produtos/hotmart:1/kit")
     assert k.status_code in (200, 503)
 
+
+def test_admin_pagamentos_pago_recusado_csv(cli):
+    from app import carteira, repasse
+    c, db = cli
+    adm = {"x-admin-key": "adm"}
+    db.exec("UPDATE produtos SET link_casa='https://go.hotmart.com/CASA1' WHERE id='hotmart:1'")
+    assinar(c); entrar(c)
+    u = db.um("SELECT * FROM usuarios WHERE email='ze@exemplo.com'")
+    sck = "rd" + carteira.codigo_ref(db, u)
+    carteira.registrar_venda(db, 0.5, {"transacao": "P1", "sck": sck, "comissao": 400, "status": "COMPLETE"})
+    c.post("/api/carteira/recebedor", json={"nome": "Ze da Silva", "doc": "52998224725", "pix": "ze@exemplo.com"})
+    assert c.post("/api/carteira/saque").status_code == 200
+    j = c.get("/api/admin/saques", headers=adm).json()
+    assert j["a_pagar_n"] == 1 and j["a_pagar_total"] == 200.0 and j["recebido_das_plataformas"] == 400.0 and j["alerta"] is False
+    sid = j["saques"][0]["id"]
+    assert c.post(f"/api/admin/saques/{sid}/recusar", json={"motivo": "x"}, headers=adm).status_code == 422
+    assert c.post(f"/api/admin/saques/{sid}/recusar", json={"motivo": "Chave Pix não confere"}, headers=adm).status_code == 200
+    assert c.get("/api/carteira").json()["disponivel"] == 200.0  # recusado devolve o saldo
+    assert c.post("/api/carteira/saque").status_code == 200
+    sid2 = c.get("/api/admin/saques", headers=adm).json()["saques"][0]["id"]
+    r = c.post(f"/api/admin/saques/{sid2}/pago", content=b"\x89PNG fake", headers={**adm, "x-arquivo": "comp.png", "content-type": "image/png"})
+    assert r.status_code == 200
+    assert c.get(f"/api/admin/saques/{sid2}/comprovante", headers=adm).status_code == 200
+    assert c.post(f"/api/admin/saques/{sid2}/pago", headers=adm).status_code == 404  # já resolvido
+    csv = c.get("/api/admin/saques.csv", headers=adm).text
+    assert "Ze da Silva" in csv and "recusado" in csv and "pago" in csv
+    assert c.get("/api/admin/saques").status_code in (401, 403)
+
+
+def test_dias_uteis_e_documentos():
+    from datetime import datetime
+    from app import repasse
+    sexta = datetime(2026, 11, 13, 10, 0, tzinfo=repasse.FUSO).timestamp()
+    terca = datetime.fromtimestamp(repasse.mais_dias_uteis(sexta, 2), repasse.FUSO)
+    assert terca.strftime("%Y-%m-%d") == "2026-11-17"  # sexta + 2 úteis (fim de semana; 15/11 é domingo)
+    vespera = datetime(2026, 11, 19, 10, 0, tzinfo=repasse.FUSO).timestamp()  # 20/11 é feriado
+    assert datetime.fromtimestamp(repasse.mais_dias_uteis(vespera, 2), repasse.FUSO).strftime("%Y-%m-%d") == "2026-11-24"
+    assert repasse.cpf_ok("529.982.247-25") and not repasse.cpf_ok("111.111.111-11")
+    assert repasse.cnpj_ok("65.505.647/0001-10") and not repasse.cnpj_ok("65.505.647/0001-11")
+    assert repasse.prazo_dias("kiwify", "CREDIT_CARD") == 15 and repasse.prazo_dias("hotmart", "PIX") == 2
 
 def test_admin_importa_vendas(cli):
     c, db = cli
