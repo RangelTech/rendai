@@ -1,5 +1,5 @@
 @font-face{font-family:"Display";src:url("/s/fonts/Montserrat-ExtraBold.ttf") format("truetype");font-weight:800;font-display:swap}
-:root{--bg:#07090c;--bg2:#0d1117;--card:#121821;--card2:#18202b;--bd:#232d3a;--fg:#eef3f8;--mut:#8b98a8;--ac:#22e58b;--ac2:#5cf0ab;--acd:#0f8f55;--ouro:#ffc93c;--fogo:#ff8a3d;--roxo:#8b7cff;--raio:20px}
+:root{--ac-txt:#04140c;--bg:#07090c;--bg2:#0d1117;--card:#121821;--card2:#18202b;--bd:#232d3a;--fg:#eef3f8;--mut:#8b98a8;--ac:#22e58b;--ac2:#5cf0ab;--acd:#0f8f55;--ouro:#ffc93c;--fogo:#ff8a3d;--roxo:#8b7cff;--raio:20px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}

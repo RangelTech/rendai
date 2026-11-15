@@ -34,5 +34,16 @@
 <div class="festa" id="festa" hidden><div class="festa-c"><div class="festa-ic" id="festa-ic"></div><h3 id="festa-t"></h3><p id="festa-d"></p><button class="btn btn-pri grande" id="festa-ok">Bora!</button></div></div>
 <canvas id="confete" aria-hidden="true"></canvas>
 <script src="/s/app.js"></script>
+<script>window.TOUR = { chave: 'rendai.tour1', atraso: 2200, passos: [
+  { titulo: 'Bem-vindo ao Rendaí', texto: 'Aqui você escolhe produtos que já estão vendendo, divulga com o material pronto e sobe de nível a cada venda.' },
+  { alvo: '#st-fogo', titulo: 'Sequência de dias', texto: 'Entre todo dia e marque presença para manter o foguinho aceso. Ganha XP.' },
+  { alvo: '#st-xp', titulo: 'Seu XP', texto: 'Cada passo vale XP: escolher produto, gerar kit, divulgar e registrar venda. O XP sobe seu nível e sua posição no ranking.' },
+  { alvo: '.missao', titulo: 'Missão da semana', texto: 'Metas curtas até domingo, com prêmio em XP. Os produtos da missão aparecem logo abaixo.' },
+  { alvo: '[data-aba=vitrine]', titulo: 'Em alta', texto: 'A vitrine com os produtos que mais estão vendendo agora, conferidos todo dia, com quanto você ganha por venda.' },
+  { alvo: '[data-aba=ranking]', titulo: 'Ranking', texto: 'Quem mais divulgou e vendeu na semana. Zera toda segunda.' },
+  { alvo: '[data-aba=perfil]', titulo: 'Perfil', texto: 'Suas conquistas, comissões registradas e seu plano. O botão para rever este tour fica lá.' },
+  { titulo: 'Bora!', texto: 'Abra um produto em alta, toque em Quero vender e gere seu kit de divulgação.' },
+] }</script>
+<script src="/s/tour.js"></script>
 </body>
 </html>

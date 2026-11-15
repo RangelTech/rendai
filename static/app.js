@@ -158,7 +158,8 @@
       <div class="sec-t"><h2>Plano</h2></div>
       ${eu.assinante ? `<div class="cartao"><div class="lin"><span>Plano ${esc((eu.planos.find((x) => x.codigo === eu.plano) || {}).nome || '')}</span><b style="color:var(--ac)">Ativo</b></div><div class="lin"><span>Produtos nesta semana</span><b>${eu.escolhidos_semana}${eu.limite_semana ? ' de ' + eu.limite_semana : ''}</b></div>${eu.plano !== 'elite' ? '<button class="btn btn-sec" data-planos>Subir de plano</button>' : ''}</div>` :
         cartoesPlanos(eu.planos)}
-      <button class="btn btn-sec" style="width:100%;margin-top:24px" id="sair">Sair da conta</button>`
+      <button class="btn btn-sec" style="width:100%;margin-top:24px" onclick="SBTour.abrir()">Ver o tour</button>
+      <button class="btn btn-sec" style="width:100%;margin-top:12px" id="sair">Sair da conta</button>`
     $('#f-ap').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/eu/apelido', { method: 'POST', body: JSON.stringify({ apelido: $('#ap').value }) }); toast('Apelido salvo'); telaPerfil() } catch (er) { toast(er.message, 1) } }
     $('#sair').onclick = async () => { await fetch('/api/sair', { method: 'POST' }); location.href = '/' }
   }
