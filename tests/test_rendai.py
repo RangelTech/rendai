@@ -79,6 +79,16 @@ def test_ganho_estimado_por_produto(cli):
     assert [x["preco"] for x in planos] == [19.90, 29.90, 59.90] and planos[0]["checkout"] == "https://pay/x"
 
 
+def test_meus_produtos(cli):
+    c, _ = cli
+    assinar(c)
+    entrar(c)
+    c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:2"})
+    c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:5"})
+    ids = [p["id"] for p in c.get("/api/meus").json()["produtos"]]
+    assert set(ids) == {"hotmart:2", "hotmart:5"}
+
+
 def test_primeira_conquista_e_venda(cli):
     c, _ = cli
     assinar(c)

@@ -91,7 +91,7 @@
   async function telaInicio() {
     const t = $('#tela')
     t.innerHTML = '<div class="esq" style="height:140px;margin-top:8px"></div><div class="esq" style="margin-top:16px"></div><div class="esq" style="height:220px;margin-top:16px"></div>'
-    const m = await api('/api/missao')
+    const [m, meus] = await Promise.all([api('/api/missao'), api('/api/meus').catch(() => ({ produtos: [] }))])
     const n = eu.nivel
     const potencial = m.produtos.reduce((t, p) => t + (p.ganho_venda || 0) * 2, 0)
     const dias = Array.from({ length: 7 }, (_, i) => `<i class="${i < Math.min(7, eu.streak) ? 'on' : ''}">${i < eu.streak ? IC.check : ''}</i>`).join('')
@@ -102,6 +102,7 @@
         <div class="barra"><i id="barra-xp"></i></div></div>
       <div class="checkin"><div><b>${eu.fez_checkin_hoje ? 'Presença confirmada hoje' : 'Marque presença hoje'}</b><span>${eu.streak} ${eu.streak === 1 ? 'dia seguido' : 'dias seguidos'}</span><div class="dias">${dias}</div></div>
         <button class="btn ${eu.fez_checkin_hoje ? 'btn-sec' : 'btn-ouro'}" id="b-checkin" ${eu.fez_checkin_hoje ? 'disabled' : ''}>${eu.fez_checkin_hoje ? IC.check : IC.fogo} ${eu.fez_checkin_hoje ? 'Feito' : '+10 XP'}</button></div>
+      ${meus.produtos.length ? `<div class="sec-t"><h2>Você está vendendo</h2></div><div class="lista-p meus">${meus.produtos.slice(0, 5).map((p) => cartaoProduto(p, 'Seu')).join('')}</div>` : ''}
       <div class="sec-t"><h2>Missão da semana</h2></div>
       <div class="missao"><div class="m-cab"><span>Até domingo</span><span class="m-tempo">termina em ${tempoAte(m.termina)}</span></div>
         <h3>${m.completa ? 'Missão cumprida!' : 'Divulgue e faça sua venda'}</h3>

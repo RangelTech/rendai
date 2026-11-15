@@ -265,6 +265,18 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         m["produtos"] = [produto_publico(db.um("SELECT * FROM produtos WHERE id=?", (p["id"],))) for p in m["produtos"]]
         return m
 
+    @app.get("/api/meus")
+    def meus(request: Request):
+        """Produtos que a pessoa escolheu vender (mais recentes primeiro), só os que continuam na vitrine."""
+        u = usuario(request)
+        ids = [r["produto"] for r in db.todos("SELECT produto, MAX(criado) c FROM acoes WHERE usuario=? AND tipo='afiliar' AND produto IS NOT NULL GROUP BY produto ORDER BY c DESC LIMIT 20", (u["id"],))]
+        out = []
+        for pid in ids:
+            p = db.um("SELECT * FROM produtos WHERE id=? AND ativo=1", (pid,))
+            if p:
+                out.append(produto_publico(p))
+        return {"produtos": out}
+
     @app.get("/api/ranking")
     def ranking(request: Request):
         return jogo.ranking(db, usuario(request)["id"])
