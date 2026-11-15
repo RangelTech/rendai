@@ -302,7 +302,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         if categoria:
             sql += " AND categoria=?"
             args.append(categoria)
-        sql += " ORDER BY temperatura DESC LIMIT ?"
+        sql += " ORDER BY (link_casa IS NOT NULL AND link_casa != '') DESC, temperatura DESC LIMIT ?"  # Link Rendaí primeiro (vende sem se afiliar)
         args.append(max(1, min(60, limite)) if u else 8)  # sem login: só uma amostra
         prods = [produto_publico(p) for p in db.todos(sql, args)]
         cats = db.todos("SELECT categoria, COUNT(*) n FROM produtos WHERE ativo=1 GROUP BY categoria ORDER BY n DESC LIMIT 12")

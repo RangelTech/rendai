@@ -1,4 +1,5 @@
-// Login comum (Cortaí, Rendaí, Perfilaí): senha por padrão, código no e-mail como opção, esqueci a senha à parte.
+// Login comum (Cortaí, Anima AI, Rendaí, Perfilaí, Atende AI, Posta AI): entrar SEMPRE com e-mail e senha.
+// Código no e-mail só para criar a conta (confirmar o e-mail) e para 'esqueci a senha'. Senha é obrigatória.
 // Na landing: <script src="/s/login.js" data-conta="/api/conta" data-destino="/app"></script> + <div class="modal" id="m-entrar"><div class="caixa">…
 // No app: qualquer elemento [data-senha] abre "Minha senha" (criar ou trocar).
 ;(() => {
@@ -24,20 +25,19 @@
       <form data-f="senha"><label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="username" required placeholder="voce@email.com">
       ${campoSenha('l-senha', 'Senha', 'current-password')}
       <button class="btn btn-pri grande" style="${largo}" type="submit">Entrar</button></form>
-      <button class="btn btn-sec" style="width:100%;margin-top:10px" type="button" data-ir="codigo">Entrar só com código no e-mail</button>
+      <button class="btn btn-sec" style="width:100%;margin-top:10px" type="button" data-ir="codigo">Primeira vez? Criar conta</button>
       <button class="link-demo" type="button" data-ir="esqueci">Esqueci minha senha</button>`,
-    codigo: () => `<h3 id="m-tit">Entrar com código</h3><p>Sem senha: mandamos 6 números para o seu e-mail. Primeira vez aqui? É por este caminho.</p>
+    codigo: () => `<h3 id="m-tit">Criar conta</h3><p>Primeiro confirmamos o seu e-mail com um código de 6 números. Depois você cria a sua senha.</p>
       <form data-f="pedir"><label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="email" required placeholder="voce@email.com">
-      <button class="btn btn-pri grande" style="${largo}" type="submit">Receber código</button></form>
-      <button class="link-demo" type="button" data-ir="senha">Tenho senha</button>`,
+      <button class="btn btn-pri grande" style="${largo}" type="submit">Enviar código</button></form>
+      <button class="link-demo" type="button" data-ir="senha">Já tenho conta</button>`,
     digitar: (e) => `<h3 id="m-tit">Digite o código</h3><p>Mandamos 6 números para ${esc(e)}. Confira também o spam.</p>
       <form data-f="codigo"><input id="l-codigo" class="cod" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="000000">
-      <button class="btn btn-pri grande" style="${largo}" type="submit">Entrar</button></form>
+      <button class="btn btn-pri grande" style="${largo}" type="submit">Confirmar e-mail</button></form>
       <button class="link-demo" type="button" data-ir="codigo">Usar outro e-mail</button>`,
-    criar: () => `<h3 id="m-tit">Crie sua senha</h3><p>Da próxima vez você entra direto, sem esperar e-mail. Pode pular se preferir o código.</p>
-      <form data-f="criar">${campoSenha('l-nova', 'Senha nova (mínimo 8)', 'new-password')}
-      <button class="btn btn-pri grande" style="${largo}" type="submit">Salvar e entrar</button></form>
-      <button class="link-demo" type="button" data-ir="pular">Agora não</button>`,
+    criar: () => `<h3 id="m-tit">Crie sua senha</h3><p>E-mail confirmado. Agora escolha a senha que você vai usar para entrar.</p>
+      <form data-f="criar">${campoSenha('l-nova', 'Senha (mínimo 8)', 'new-password')}
+      <button class="btn btn-pri grande" style="${largo}" type="submit">Criar conta e entrar</button></form>`,
     esqueci: () => `<h3 id="m-tit">Esqueci minha senha</h3><p>Mandamos um código para o seu e-mail e você escolhe uma senha nova.</p>
       <form data-f="esqueci"><label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="email" required placeholder="voce@email.com">
       <button class="btn btn-pri grande" style="${largo}" type="submit">Enviar código</button></form>
@@ -108,21 +108,21 @@
     if (new URLSearchParams(location.search).has('entrar')) abrir()
   }
 
-  // ---------------------------------------------------------------- app: minha senha
-  document.addEventListener('click', async (e) => {
-    if (!e.target.closest('[data-senha]')) return
+  // ---------------------------------------------------------------- app: minha senha (obrigatória)
+  async function abrirSenha(obrigatoria) {
     let s = {}
     try { s = await fetch('/api/senha').then((r) => r.json()) } catch {}
+    if (obrigatoria && (s.tem_senha || s.tem_senha === undefined)) return
     const box = document.createElement('div')
     box.className = 'modal'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true')
-    box.innerHTML = `<div class="caixa"><button class="x" data-fechar aria-label="Fechar">×</button>
-      <h3>${s.tem_senha ? 'Trocar senha' : 'Criar senha'}</h3><p>${s.tem_senha ? 'Digite a atual e a nova.' : 'Com senha você entra direto, sem esperar o código no e-mail.'}</p>
+    box.innerHTML = `<div class="caixa">${obrigatoria ? '' : '<button class="x" data-fechar aria-label="Fechar">×</button>'}
+      <h3>${s.tem_senha ? 'Trocar senha' : 'Crie sua senha'}</h3><p>${s.tem_senha ? 'Digite a atual e a nova.' : 'Para continuar, escolha a senha que você vai usar para entrar.'}</p>
       <form>${s.tem_senha ? campoSenha('s-atual', 'Senha atual', 'current-password') : ''}${campoSenha('s-nova', 'Senha nova (mínimo 8)', 'new-password')}
       <button class="btn btn-pri grande" style="${largo}" type="submit">Salvar</button></form><div class="msg" role="alert"></div></div>`
     document.body.append(box)
     const msg = (t, tipo = 'erro') => { const m = $('.msg', box); m.textContent = t; m.className = 'msg ' + tipo }
     box.addEventListener('click', (ev) => {
-      if (ev.target === box || ev.target.closest('[data-fechar]')) return box.remove()
+      if (!obrigatoria && (ev.target === box || ev.target.closest('[data-fechar]'))) return box.remove()
       const v = ev.target.closest('[data-ver]')
       if (v) { const i = $('#' + v.dataset.ver, box); i.type = i.type === 'password' ? 'text' : 'password'; v.textContent = i.type === 'password' ? 'mostrar' : 'esconder' }
     })
@@ -132,5 +132,7 @@
       catch (err) { msg(err.message) } finally { b.disabled = false }
     }
     setTimeout(() => $('input', box)?.focus(), 50)
-  })
+  }
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-senha]')) abrirSenha(false) })
+  if (!document.getElementById('m-entrar')) abrirSenha(true)  // painel: conta sem senha cria agora
 })()
