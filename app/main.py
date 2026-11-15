@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import auth, coletor, jogo, kit, mailer
+from app import afiliado, auth, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -64,10 +64,12 @@ class Config:
     admin_key: str = ""
     demo_email: str = ""
     demo_senha: str = ""
+    afiliados: dict = None            # {"hotmart": {"cookie": "..."}} sessão de conta de afiliado (cofre: rendai-afiliados.env)
 
     def __post_init__(self):
         self.checkouts = self.checkouts or {}
         self.planos_por_produto = self.planos_por_produto or {}
+        self.afiliados = self.afiliados or {}
 
 
 def carregar() -> Config:
@@ -81,10 +83,11 @@ def carregar() -> Config:
                   dev=e("RENDAI_DEV", "") == "1", coletar=e("RENDAI_COLETAR", "1") == "1",
                   checkouts=json.loads(e("RENDAI_CHECKOUTS", "") or "{}"), planos_por_produto=json.loads(e("RENDAI_PLANOS_CAKTO", "") or "{}"),
                   lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""),
-                  demo_email=e("RENDAI_DEMO_EMAIL", ""), demo_senha=e("RENDAI_DEMO_SENHA", ""))
+                  demo_email=e("RENDAI_DEMO_EMAIL", ""), demo_senha=e("RENDAI_DEMO_SENHA", ""),
+                  afiliados=json.loads(e("RENDAI_AFILIADOS", "") or "{}"))
 
 
-def _rotina_coleta(db: Banco, parar: threading.Event) -> None:
+def _rotina_coleta(db: Banco, parar: threading.Event, cfg_rotina=None) -> None:
     """Varredura completa 1x por dia; conferência dos produtos da vitrine a cada hora (cada um no máximo a cada 6 h)."""
     log = logging.getLogger("rendai.rotina")
     ultima_varredura = 0.0
@@ -95,6 +98,8 @@ def _rotina_coleta(db: Banco, parar: threading.Event) -> None:
                 ultima_varredura = agora()
             log.info("conferência: %s produtos", coletor.conferir_vitrine(db))
             coletor.temperaturas(db)
+            if cfg_rotina is not None and afiliado.sessoes(cfg_rotina):
+                afiliado.enriquecer(db, cfg_rotina)
         except Exception:  # noqa: BLE001
             log.exception("rotina de coleta falhou")
         parar.wait(3600)
@@ -111,7 +116,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         db.exec("UPDATE usuarios SET plano='elite', ativo_ate=?, apelido=COALESCE(apelido,'Demo') WHERE id=?", (agora() + 3650 * 86400, u["id"]))
     if iniciar_rotina and cfg.coletar:
         app.state.parar = threading.Event()
-        threading.Thread(target=_rotina_coleta, args=(db, app.state.parar), daemon=True, name="coleta").start()
+        threading.Thread(target=_rotina_coleta, args=(db, app.state.parar, cfg), daemon=True, name="coleta").start()
 
     def usuario(request: Request, obrigatorio=True):
         u = auth.usuario_da_sessao(db, cfg.segredo_sessao, request.cookies.get(COOKIE))
@@ -306,7 +311,22 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             raise HTTPException(404, "esse produto saiu da vitrine (a oferta acabou ou mudou)")
         lib = auth.assinante(u) and pode_pegar(u, pid)
         hist = db.todos("SELECT dia, avaliacoes, alunos FROM historico WHERE produto=? ORDER BY dia DESC LIMIT 14", (pid,))
-        return {**produto_publico(p), "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1]}
+        ml = db.um("SELECT link FROM links WHERE usuario=? AND produto=?", (u["id"], pid))
+        return {**produto_publico(p), "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1], "meu_link": ml["link"] if ml else ""}
+
+    @app.post("/api/produtos/{pid}/link")
+    async def salvar_link(pid: str, request: Request):
+        """O link de afiliado da pessoa para este produto: entra no kit pronto para copiar."""
+        u = usuario(request)
+        b = await request.json()
+        link = str(b.get("link") or "").strip()
+        if link and not afiliado.link_valido(link):
+            raise HTTPException(422, "esse não parece um link de afiliado (Hotmart, Cakto, Kiwify, Eduzz, Braip ou Monetizze)")
+        if link:
+            db.exec("INSERT INTO links(usuario,produto,link,criado) VALUES(?,?,?,?) ON CONFLICT(usuario,produto) DO UPDATE SET link=excluded.link", (u["id"], pid, link, agora()))
+        else:
+            db.exec("DELETE FROM links WHERE usuario=? AND produto=?", (u["id"], pid))
+        return {"ok": True, "link": link}
 
     @app.post("/api/produtos/{pid}/kit")
     def gerar_kit(pid: str, request: Request):
@@ -321,6 +341,10 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         except Exception:  # noqa: BLE001
             raise HTTPException(503, "não consegui montar o kit agora; tente de novo em instantes")
         jogo.registrar(db, u["id"], "kit", pid)
+        ml = db.um("SELECT link FROM links WHERE usuario=? AND produto=?", (u["id"], pid))
+        if ml:  # o kit é o mesmo para todos; o link de cada um entra na hora de entregar
+            k = {**k, "link": ml["link"], "posts": [f"{x}\n\n{ml['link']}" for x in k.get("posts") or []],
+                 "whatsapp": (k.get("whatsapp") or "") + (f"\n\n{ml['link']}" if k.get("whatsapp") else "")}
         return k
 
     # ------------------------------------------------ Cakto
@@ -375,6 +399,19 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
                 "acoes_7d": db.um("SELECT COUNT(*) n FROM acoes WHERE criado>?", (sem,))["n"],
                 "vendas_registradas_7d": db.um("SELECT COUNT(*) n FROM acoes WHERE tipo='venda' AND criado>?", (sem,))["n"],
                 "planos": planos_publicos()}
+
+    @app.get("/api/admin/afiliados")
+    def admin_afiliados(request: Request):
+        exigir_admin(request)
+        return {"sessoes": [afiliado.logado(cfg, p) for p in (afiliado.sessoes(cfg) or {"hotmart": 0})],
+                "com_comissao_real": db.um("SELECT COUNT(*) n FROM produtos WHERE ativo=1 AND comissao_pct IS NOT NULL")["n"]}
+
+    @app.post("/api/admin/afiliados/testar")
+    def admin_afiliados_testar(request: Request, n: int = 5, gravar: int = 0):
+        exigir_admin(request)
+        if not afiliado.sessoes(cfg):
+            raise HTTPException(409, "sem sessão de afiliado: preencha RENDAI_AFILIADOS (cofre rendai-afiliados.env) e reimplante")
+        return {"achados": afiliado.enriquecer(db, cfg, limite=max(1, min(n, 30)), pausa=(0.5, 1.2), gravar=bool(gravar))}
 
     @app.get("/api/admin/assinantes")
     def admin_assinantes(request: Request):

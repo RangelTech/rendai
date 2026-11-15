@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS acoes (
 CREATE INDEX IF NOT EXISTS acoes_usuario ON acoes(usuario, criado);
 CREATE TABLE IF NOT EXISTS kits (produto TEXT PRIMARY KEY, conteudo TEXT NOT NULL, criado REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS conquistas (usuario INTEGER NOT NULL, codigo TEXT NOT NULL, criado REAL NOT NULL, PRIMARY KEY(usuario, codigo));
+CREATE TABLE IF NOT EXISTS links (usuario INTEGER NOT NULL, produto TEXT NOT NULL, link TEXT NOT NULL, criado REAL NOT NULL, PRIMARY KEY(usuario, produto));
 CREATE TABLE IF NOT EXISTS eventos_cakto (id TEXT PRIMARY KEY, recebido REAL NOT NULL, corpo TEXT NOT NULL);
 """
 

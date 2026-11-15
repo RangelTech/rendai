@@ -185,3 +185,24 @@ def test_senha_so_para_demo(cli):
     assert c.post("/api/entrar/senha", json={"email": "Demo@RangelTech.net", "senha": "Demo2026"}).status_code == 200
     cfg.demo_senha = ""
     assert c.post("/api/entrar/senha", json={"email": "demo@rangeltech.net", "senha": ""}).status_code == 400
+
+
+def test_link_de_afiliado_valida_e_entra_no_kit(cli, monkeypatch):
+    c, db = cli
+    assinar(c); entrar(c)
+    assert c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:1"}).status_code == 200
+    assert c.post("/api/produtos/hotmart:1/link", json={"link": "https://golpe.com/x"}).status_code == 422
+    assert c.post("/api/produtos/hotmart:1/link", json={"link": "https://go.hotmart.com/A1B2C3?dp=1"}).status_code == 200
+    assert c.get("/api/produtos/hotmart:1").json()["meu_link"] == "https://go.hotmart.com/A1B2C3?dp=1"
+    from app import kit
+    monkeypatch.setattr(kit, "gerar", lambda db, cfg, p: {"posts": ["Post A"], "whatsapp": "Oi", "hashtags": []})
+    k = c.post("/api/produtos/hotmart:1/kit").json()
+    assert k["posts"][0].endswith("https://go.hotmart.com/A1B2C3?dp=1") and k["whatsapp"].endswith("A1B2C3?dp=1")
+
+
+def test_leitor_de_comissao_da_pagina_logada():
+    from app import afiliado
+    assert afiliado.ler_comissao('{"commissionPercentage": 60, "x": 1}') == 0.6
+    assert afiliado.ler_comissao('<p>Comissão de até 45,5% por venda</p>') == 0.455
+    assert afiliado.ler_comissao('{"price": 197}') is None
+    assert afiliado.sessoes(Config()) == {}

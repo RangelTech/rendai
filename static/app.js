@@ -190,6 +190,9 @@
         <a class="btn btn-sec grande" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir na Hotmart ${IC.seta}</a>
         ${p.escolhido ? '<button class="btn btn-ouro grande" id="b-kit">Gerar kit de divulgação</button>' : ''}
       </div>
+      ${p.escolhido ? `<form class="meu-link" id="f-link"><label for="ml">Seu link de afiliado deste produto</label>
+        <div class="ml-linha"><input id="ml" type="url" inputmode="url" placeholder="https://go.hotmart.com/…" value="${esc(p.meu_link || '')}" autocomplete="off"><button class="btn btn-sec" type="submit">Salvar</button></div>
+        <small>Com o link salvo, o kit já sai com ele no fim de cada post. Pegue em Hotmart → Minhas afiliações → Links.</small></form>` : ''}
       <div id="kit"></div>
       ${p.escolhido ? `<div class="botoes" style="margin-top:16px"><button class="btn btn-sec" id="b-div">Divulguei agora (+30 XP)</button><button class="btn btn-sec" id="b-venda">Registrar uma venda (+200 XP)</button></div>` : ''}`
     const sim = $('#sim')
@@ -202,6 +205,11 @@
       if (!eu.assinante) return abrirPlanos('Escolha um plano para vender este produto')
       bq.disabled = true
       try { await comemorar(await acao('afiliar', id)); abrirProduto(id) } catch (e) { if (e.status === 402) abrirPlanos(e.message); else toast(e.message, 1); bq.disabled = false }
+    }
+    const fl = $('#f-link')
+    if (fl) fl.onsubmit = async (e) => {
+      e.preventDefault()
+      try { await api(`/api/produtos/${encodeURIComponent(id)}/link`, { method: 'POST', body: JSON.stringify({ link: $('#ml').value.trim() }) }); toast($('#ml').value.trim() ? 'Link salvo: o kit já sai com ele' : 'Link removido') } catch (err) { toast(err.message, 1) }
     }
     const bk = $('#b-kit')
     if (bk) bk.onclick = async () => {

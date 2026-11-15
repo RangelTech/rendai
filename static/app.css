@@ -72,6 +72,11 @@
 .passos-af li:before{content:counter(p);flex:none;width:24px;height:24px;border-radius:50%;background:var(--card2);color:var(--fg);display:grid;place-items:center;font:800 12px "Display"}
 .passos-af b{color:var(--fg)}
 .botoes{display:grid;gap:12px}
+.meu-link{margin-top:20px;display:grid;gap:8px}
+.meu-link label{font-weight:700;font-size:14px}
+.ml-linha{display:flex;gap:8px}
+.ml-linha input{flex:1;min-width:0}
+.meu-link small{color:var(--mut);font-size:13px}
 .kit{display:grid;gap:12px;margin-top:16px}
 .kit-b{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;font-size:14px;white-space:pre-wrap;position:relative}
 .kit-b strong{display:block;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
