@@ -28,7 +28,7 @@
       <span class="sb-tour-bt">${i ? '<button data-t="volt">Voltar</button>' : '<button data-t="fim">Pular</button>'}<button class="pri" data-t="${ult ? 'fim' : 'prox'}">${ult ? 'Começar' : 'Próximo'}</button></span></div>`
     // centraliza o elemento na tela e só depois posiciona o balão (antes, a rolagem acontecia depois do cálculo e o destaque sumia)
     const alvo = p.alvo ? document.querySelector(p.alvo) : null
-    if (alvo && vis(alvo)) { alvo.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(posicionar, 420) }
+    if (alvo && vis(alvo)) { alvo.scrollIntoView({ block: 'center' }); requestAnimationFrame(() => requestAnimationFrame(posicionar)); setTimeout(posicionar, 300) }
     posicionar()
   }
   function posicionar() {
