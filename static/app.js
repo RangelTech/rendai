@@ -69,7 +69,7 @@
 
   function cartaoProduto(p, rot) {
     return `<button class="pl" data-prod="${esc(p.id)}">${p.imagem ? `<img src="${esc(p.imagem)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
-      <div class="pi">${rot ? `<span class="tag">${esc(rot)}</span>` : ''}<b>${esc(p.titulo)}</b>${p.ganho_venda ? `<span class="ganho">Ganhe até ${brl(p.ganho_venda)} por venda</span>` : ''}
+      <div class="pi">${rot ? `<span class="tag">${esc(rot)}</span>` : ''}${p.link_rendai_disp ? '<span class="selo-rd">Link Rendaí</span>' : ''}<b>${esc(p.titulo)}</b>${p.ganho_venda ? `<span class="ganho">Ganhe até ${brl(p.ganho_venda)} por venda</span>` : ''}
       <div class="calor">${Math.round(p.temperatura)}°<div class="temp"><i style="width:${Math.max(6, p.temperatura)}%"></i></div></div>
       <div class="meta"><span>★ ${(p.nota || 0).toFixed(1).replace('.', ',')}</span><span>${num(p.avaliacoes)} avaliações</span>${p.alunos ? `<span>${num(p.alunos)} alunos</span>` : ''}</div></div></button>`
   }
@@ -165,6 +165,26 @@
     $('#sair').onclick = async () => { await fetch('/api/sair', { method: 'POST' }); location.href = '/' }
   }
 
+  async function telaCarteira() {
+    const t = $('#tela')
+    const w = await api('/api/carteira')
+    const est = { pendente: 'Na garantia', liberada: 'Liberada', reembolsada: 'Reembolsada' }
+    const dt = (s) => new Date(s * 1000).toLocaleDateString('pt-BR')
+    t.innerHTML = `<div class="sec-t"><h2>Carteira</h2></div>
+      <div class="cart-num"><div><span>Disponível para saque</span><b>${brl(w.disponivel)}</b></div><div><span>Na garantia</span><b>${brl(w.a_liberar)}</b></div><div><span>Já sacado</span><b>${brl(w.sacado)}</b></div></div>
+      <div class="cartao">
+        <form id="f-pix" class="busca"><input id="pix" maxlength="120" placeholder="Sua chave PIX" value="${esc(w.pix || '')}"><button class="btn btn-sec" type="submit">Salvar</button></form>
+        <button class="btn btn-pri grande" id="b-saque" style="width:100%;margin-top:12px" ${w.disponivel < w.saque_minimo ? 'disabled' : ''}>Sacar ${brl(w.disponivel)}</button>
+        <small style="color:var(--mut);display:block;margin-top:8px">Saque mínimo ${brl(w.saque_minimo)}. O PIX cai em até 2 dias úteis. Você fica com ${Math.round((1 - w.taxa_casa) * 100)}% da comissão de cada venda pelo Link Rendaí.</small>
+      </div>
+      <div class="sec-t"><h2>Vendas pelo Link Rendaí</h2></div>
+      ${w.vendas.length ? `<div class="cartao">${w.vendas.map((v) => `<div class="lin"><span>${esc(v.titulo || 'Produto')}<br><small style="color:var(--mut)">${dt(v.criado)} · ${est[v.estado] || v.estado}${v.estado === 'pendente' ? ' até ' + dt(v.libera_em) : ''}</small></span><b>${brl(v.parte_usuario)}</b></div>`).join('')}</div>`
+        : '<div class="vazio">Nenhuma venda ainda. Abra um produto com o selo <b>Link Rendaí</b>, copie o link e divulgue com o kit.</div>'}
+      ${w.saques.length ? `<div class="sec-t"><h2>Saques</h2></div><div class="cartao">${w.saques.map((s) => `<div class="lin"><span>${dt(s.criado)} · ${s.estado === 'pago' ? 'Pago' : s.estado === 'pedido' ? 'Pedido' : 'Recusado'}</span><b>${brl(s.valor)}</b></div>`).join('')}</div>` : ''}`
+    $('#f-pix').onsubmit = async (e) => { e.preventDefault(); try { await api('/api/carteira/pix', { method: 'POST', body: JSON.stringify({ pix: $('#pix').value }) }); toast('Chave PIX salva'); telaCarteira() } catch (er) { toast(er.message, 1) } }
+    $('#b-saque').onclick = async () => { try { await api('/api/carteira/saque', { method: 'POST' }); toast('Saque pedido!'); telaCarteira() } catch (er) { toast(er.message, 1) } }
+  }
+
   // detalhe do produto: passo a passo de afiliação, kit da IA, divulguei, registrar venda
   async function abrirProduto(id) {
     const f = $('#folha'), c = $('#folha-corpo')
@@ -190,6 +210,9 @@
         <a class="btn btn-sec grande" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir na Hotmart ${IC.seta}</a>
         ${p.escolhido ? '<button class="btn btn-ouro grande" id="b-kit">Gerar kit de divulgação</button>' : ''}
       </div>
+      ${p.link_rendai ? `<div class="link-rd"><div class="lr-top"><span class="selo-rd">Link Rendaí</span><b>Sem precisar se afiliar</b></div>
+        <p>Divulgue este link: a venda é registrada no seu nome, você fica com <b>${Math.round((1 - p.taxa_casa) * 100)}% da comissão</b> e saca por PIX depois da garantia.</p>
+        <div class="ml-linha"><input readonly value="${esc(p.link_rendai)}" aria-label="Seu link Rendaí"><button class="btn btn-pri copiar" data-copiar="${esc(p.link_rendai)}">Copiar</button></div></div>` : ''}
       ${p.escolhido ? `<form class="meu-link" id="f-link"><label for="ml">Seu link de afiliado deste produto</label>
         <div class="ml-linha"><input id="ml" type="url" inputmode="url" placeholder="https://go.hotmart.com/…" value="${esc(p.meu_link || '')}" autocomplete="off"><button class="btn btn-sec" type="submit">Salvar</button></div>
         <small>Com o link salvo, o kit já sai com ele no fim de cada post. Pegue em Hotmart → Minhas afiliações → Links.</small></form>` : ''}
@@ -249,7 +272,7 @@
     aba = a
     document.querySelectorAll('.abas button').forEach((b) => b.classList.toggle('on', b.dataset.aba === a))
     scrollTo({ top: 0 })
-    ;({ inicio: telaInicio, vitrine: telaVitrine, ranking: telaRanking, perfil: telaPerfil })[a]().catch((er) => toast(er.message, 1))
+    ;({ inicio: telaInicio, vitrine: telaVitrine, carteira: telaCarteira, ranking: telaRanking, perfil: telaPerfil })[a]().catch((er) => toast(er.message, 1))
   }
   carregarEu().then(() => trocar('inicio')).catch(() => {})
 })()

@@ -206,3 +206,41 @@ def test_leitor_de_comissao_da_pagina_logada():
     assert afiliado.ler_comissao('<p>Comissão de até 45,5% por venda</p>') == 0.455
     assert afiliado.ler_comissao('{"price": 197}') is None
     assert afiliado.sessoes(Config()) == {}
+
+
+def test_link_rendai_venda_garantia_e_saque(cli):
+    """Casa afiliada: assinante recebe link com sck; venda entra pendente, libera após garantia, reembolso volta, saque por PIX."""
+    from app import carteira
+    c, db = cli
+    db.exec("UPDATE produtos SET link_casa='https://go.hotmart.com/CASA1' WHERE id='hotmart:1'")
+    assinar(c); entrar(c)
+    c.post("/api/acao", json={"tipo": "afiliar", "produto": "hotmart:1"})
+    p = c.get("/api/produtos/hotmart:1").json()
+    assert p["link_rendai"].startswith("https://go.hotmart.com/CASA1?sck=rd")
+    sck = p["link_rendai"].split("sck=")[1]
+    u = db.um("SELECT id FROM usuarios WHERE email='ze@exemplo.com'")
+    tx = 0.10
+    assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 30, "status": "APPROVED", "garantia_ate": agora() + 86400}) == "nova"
+    assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "comissao": 50, "status": "APPROVED", "garantia_ate": agora() - 10}) == "nova"
+    assert carteira.registrar_venda(db, tx, {"transacao": "T3", "sck": "outra", "comissao": 50}) == "sem dono"
+    assert carteira.registrar_venda(db, tx, {"transacao": "T1", "sck": sck, "comissao": 30, "status": "APPROVED"}) == "ignorada"
+    w = c.get("/api/carteira").json()
+    assert w["a_liberar"] == 27.0 and w["disponivel"] == 45.0
+    assert c.post("/api/carteira/saque").status_code == 422          # sem PIX
+    c.post("/api/carteira/pix", json={"pix": "ze@exemplo.com"})
+    assert carteira.registrar_venda(db, tx, {"transacao": "T2", "sck": sck, "status": "REFUNDED"}) == "reembolsada"
+    assert c.get("/api/carteira").json()["disponivel"] == 0.0
+    db.exec("UPDATE vendas_casa SET libera_em=? WHERE id='T1'", (agora() - 1,))
+    assert carteira.liberar_vencidas(db) == 1
+    assert c.post("/api/carteira/saque").status_code == 200
+    w = c.get("/api/carteira").json()
+    assert w["disponivel"] == 0.0 and w["saques"][0]["valor"] == 27.0
+    k = c.post("/api/produtos/hotmart:1/kit")
+    assert k.status_code in (200, 503)
+
+
+def test_admin_importa_vendas(cli):
+    c, db = cli
+    c2 = c
+    r = c2.post("/api/admin/vendas", json=[{"transacao": "X", "sck": "rd00000000", "comissao": 10}], headers={"x-admin-key": "errada"})
+    assert r.status_code == 401

@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import afiliado, auth, coletor, jogo, kit, mailer
+from app import afiliado, auth, carteira, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -65,11 +65,14 @@ class Config:
     demo_email: str = ""
     demo_senha: str = ""
     afiliados: dict = None            # {"hotmart": {"cookie": "..."}} sessão de conta de afiliado (cofre: rendai-afiliados.env)
+    hotmart: dict = None              # {"client_id","client_secret","basic"} API da conta da casa (vendas do link Rendaí)
+    taxa_casa: float = 0.10           # parte da comissão que fica com a casa no link Rendaí
 
     def __post_init__(self):
         self.checkouts = self.checkouts or {}
         self.planos_por_produto = self.planos_por_produto or {}
         self.afiliados = self.afiliados or {}
+        self.hotmart = self.hotmart or {}
 
 
 def carregar() -> Config:
@@ -84,7 +87,8 @@ def carregar() -> Config:
                   checkouts=json.loads(e("RENDAI_CHECKOUTS", "") or "{}"), planos_por_produto=json.loads(e("RENDAI_PLANOS_CAKTO", "") or "{}"),
                   lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""),
                   demo_email=e("RENDAI_DEMO_EMAIL", ""), demo_senha=e("RENDAI_DEMO_SENHA", ""),
-                  afiliados=json.loads(e("RENDAI_AFILIADOS", "") or "{}"))
+                  afiliados=json.loads(e("RENDAI_AFILIADOS", "") or "{}"), hotmart=json.loads(e("RENDAI_HOTMART", "") or "{}"),
+                  taxa_casa=float(e("RENDAI_TAXA_CASA", "0.10") or 0.10))
 
 
 def _rotina_coleta(db: Banco, parar: threading.Event, cfg_rotina=None) -> None:
@@ -100,6 +104,9 @@ def _rotina_coleta(db: Banco, parar: threading.Event, cfg_rotina=None) -> None:
             coletor.temperaturas(db)
             if cfg_rotina is not None and afiliado.sessoes(cfg_rotina):
                 afiliado.enriquecer(db, cfg_rotina)
+            carteira.liberar_vencidas(db)
+            if cfg_rotina is not None and cfg_rotina.hotmart:
+                log.info("link Rendaí: %s", carteira.sincronizar(db, cfg_rotina))
         except Exception:  # noqa: BLE001
             log.exception("rotina de coleta falhou")
         parar.wait(3600)
@@ -165,6 +172,8 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         out["comissao_pct"] = p.get("comissao_pct") or COMISSAO_ESTIMADA
         out["comissao_estimada"] = not p.get("comissao_pct")
         out["ganho_venda"] = ganho_por_venda(p.get("preco"), p.get("comissao_pct"))
+        out["link_rendai_disp"] = bool(p.get("link_casa"))
+        out.pop("link_casa", None)
         return out
 
     @app.get("/health")
@@ -312,7 +321,8 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         lib = auth.assinante(u) and pode_pegar(u, pid)
         hist = db.todos("SELECT dia, avaliacoes, alunos FROM historico WHERE produto=? ORDER BY dia DESC LIMIT 14", (pid,))
         ml = db.um("SELECT link FROM links WHERE usuario=? AND produto=?", (u["id"], pid))
-        return {**produto_publico(p), "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1], "meu_link": ml["link"] if ml else ""}
+        lr = carteira.link_rendai(p["link_casa"], carteira.codigo_ref(db, u)) if p.get("link_casa") and lib else ""
+        return {**produto_publico(p), "link_rendai": lr, "taxa_casa": cfg.taxa_casa, "descricao": p["descricao"], "liberado": lib, "escolhido": pid in liberados(u), "historico": hist[::-1], "meu_link": ml["link"] if ml else ""}
 
     @app.post("/api/produtos/{pid}/link")
     async def salvar_link(pid: str, request: Request):
@@ -342,6 +352,8 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             raise HTTPException(503, "não consegui montar o kit agora; tente de novo em instantes")
         jogo.registrar(db, u["id"], "kit", pid)
         ml = db.um("SELECT link FROM links WHERE usuario=? AND produto=?", (u["id"], pid))
+        if not ml and p.get("link_casa"):
+            ml = {"link": carteira.link_rendai(p["link_casa"], carteira.codigo_ref(db, u))}
         if ml:  # o kit é o mesmo para todos; o link de cada um entra na hora de entregar
             k = {**k, "link": ml["link"], "posts": [f"{x}\n\n{ml['link']}" for x in k.get("posts") or []],
                  "whatsapp": (k.get("whatsapp") or "") + (f"\n\n{ml['link']}" if k.get("whatsapp") else "")}
@@ -399,6 +411,66 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
                 "acoes_7d": db.um("SELECT COUNT(*) n FROM acoes WHERE criado>?", (sem,))["n"],
                 "vendas_registradas_7d": db.um("SELECT COUNT(*) n FROM acoes WHERE tipo='venda' AND criado>?", (sem,))["n"],
                 "planos": planos_publicos()}
+
+    @app.get("/api/carteira")
+    def ver_carteira(request: Request):
+        u = usuario(request)
+        return {**carteira.resumo(db, u["id"]), "taxa_casa": cfg.taxa_casa}
+
+    @app.post("/api/carteira/pix")
+    async def salvar_pix(request: Request):
+        u = usuario(request)
+        pix = str((await request.json()).get("pix") or "").strip()[:120]
+        if len(pix) < 5:
+            raise HTTPException(422, "informe a chave PIX (CPF, e-mail, telefone ou chave aleatória)")
+        db.exec("UPDATE usuarios SET pix=? WHERE id=?", (pix, u["id"]))
+        return carteira.resumo(db, u["id"])
+
+    @app.post("/api/carteira/saque")
+    def sacar(request: Request):
+        u = usuario(request)
+        try:
+            return carteira.pedir_saque(db, u["id"])
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.post("/api/admin/produtos/{pid}/link-casa")
+    async def admin_link_casa(pid: str, request: Request):
+        exigir_admin(request)
+        link = str((await request.json()).get("link") or "").strip()
+        if link and not afiliado.link_valido(link):
+            raise HTTPException(422, "link inválido")
+        db.exec("UPDATE produtos SET link_casa=? WHERE id=?", (link or None, pid))
+        return {"ok": True, "produto": pid, "link_casa": link}
+
+    @app.post("/api/admin/vendas")
+    async def admin_vendas(request: Request):
+        """Importa vendas do link Rendaí (lista JSON: transacao, sck, comissao, status, garantia_ate, produto)."""
+        exigir_admin(request)
+        itens = await request.json()
+        out: dict[str, int] = {}
+        for v in itens if isinstance(itens, list) else []:
+            if v.get("transacao"):
+                r = carteira.registrar_venda(db, cfg.taxa_casa, v)
+                out[r] = out.get(r, 0) + 1
+        return out
+
+    @app.post("/api/admin/hotmart/sincronizar")
+    def admin_sync(request: Request, dias: int = 45):
+        exigir_admin(request)
+        return carteira.sincronizar(db, cfg, dias)
+
+    @app.get("/api/admin/saques")
+    def admin_saques(request: Request):
+        exigir_admin(request)
+        return {"saques": db.todos("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario ORDER BY s.criado DESC LIMIT 200"),
+                "casa": db.um("SELECT COALESCE(SUM(parte_casa),0) casa, COALESCE(SUM(comissao),0) bruto, COUNT(*) n FROM vendas_casa WHERE estado!='reembolsada'")}
+
+    @app.post("/api/admin/saques/{sid}/pago")
+    def admin_saque_pago(sid: int, request: Request):
+        exigir_admin(request)
+        db.exec("UPDATE saques SET estado='pago', pago=? WHERE id=? AND estado='pedido'", (agora(), sid))
+        return {"ok": True}
 
     @app.get("/api/admin/afiliados")
     def admin_afiliados(request: Request):

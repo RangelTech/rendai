@@ -72,6 +72,14 @@
 .passos-af li:before{content:counter(p);flex:none;width:24px;height:24px;border-radius:50%;background:var(--card2);color:var(--fg);display:grid;place-items:center;font:800 12px "Display"}
 .passos-af b{color:var(--fg)}
 .botoes{display:grid;gap:12px}
+.link-rd{margin-top:20px;border:1px solid rgba(34,229,139,.35);background:rgba(34,229,139,.06);border-radius:16px;padding:16px;display:grid;gap:10px}
+.lr-top{display:flex;align-items:center;gap:10px}
+.selo-rd{font:800 11px system-ui;text-transform:uppercase;letter-spacing:.05em;background:var(--ac);color:#062014;border-radius:6px;padding:3px 8px}
+.link-rd p{margin:0;color:var(--mut);font-size:14px}
+.cart-num{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.cart-num div{background:var(--card,#15151d);border:1px solid var(--bd);border-radius:14px;padding:12px;display:grid;gap:4px}
+.cart-num span{color:var(--mut);font-size:12px}
+.cart-num b{font-size:18px}
 .meu-link{margin-top:20px;display:grid;gap:8px}
 .meu-link label{font-weight:700;font-size:14px}
 .ml-linha{display:flex;gap:8px}

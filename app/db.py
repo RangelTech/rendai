@@ -45,6 +45,14 @@ CREATE INDEX IF NOT EXISTS acoes_usuario ON acoes(usuario, criado);
 CREATE TABLE IF NOT EXISTS kits (produto TEXT PRIMARY KEY, conteudo TEXT NOT NULL, criado REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS conquistas (usuario INTEGER NOT NULL, codigo TEXT NOT NULL, criado REAL NOT NULL, PRIMARY KEY(usuario, codigo));
 CREATE TABLE IF NOT EXISTS links (usuario INTEGER NOT NULL, produto TEXT NOT NULL, link TEXT NOT NULL, criado REAL NOT NULL, PRIMARY KEY(usuario, produto));
+CREATE TABLE IF NOT EXISTS vendas_casa (
+  id TEXT PRIMARY KEY, usuario INTEGER NOT NULL, produto TEXT, comissao REAL NOT NULL, parte_usuario REAL NOT NULL, parte_casa REAL NOT NULL,
+  estado TEXT NOT NULL,                -- pendente (na garantia) | liberada | reembolsada
+  libera_em REAL NOT NULL, criado REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS vendas_casa_usuario ON vendas_casa(usuario, criado);
+CREATE TABLE IF NOT EXISTS saques (id INTEGER PRIMARY KEY, usuario INTEGER NOT NULL, valor REAL NOT NULL, pix TEXT NOT NULL,
+  estado TEXT NOT NULL,                -- pedido | pago | recusado
+  criado REAL NOT NULL, pago REAL);
 CREATE TABLE IF NOT EXISTS eventos_cakto (id TEXT PRIMARY KEY, recebido REAL NOT NULL, corpo TEXT NOT NULL);
 """
 
@@ -58,9 +66,13 @@ class Banco:
         self.con.executescript(ESQUEMA)
         # migrações simples (colunas novas em banco que já existe)
         cols = {r[1] for r in self.con.execute("PRAGMA table_info(produtos)")}
-        for col, tipo in (("oferta", "TEXT"), ("preco", "REAL"), ("comissao_pct", "REAL")):
+        for col, tipo in (("oferta", "TEXT"), ("preco", "REAL"), ("comissao_pct", "REAL"), ("link_casa", "TEXT")):
             if col not in cols:
                 self.con.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo}")
+        cols_u = {r[1] for r in self.con.execute("PRAGMA table_info(usuarios)")}
+        for col in ("codigo_ref", "pix"):  # link Rendaí (microtransação)
+            if col not in cols_u:
+                self.con.execute(f"ALTER TABLE usuarios ADD COLUMN {col} TEXT")
 
     @contextmanager
     def tx(self):
