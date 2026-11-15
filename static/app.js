@@ -200,6 +200,10 @@
         <div class="gb-res"><div><span>na semana</span><b id="sim-s"></b></div><div><span>no mês</span><b id="sim-m"></b></div></div>
         <small>${p.comissao_estimada ? 'Comissão média estimada de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + ', já descontada a taxa da plataforma.' : 'Comissão de ' + Math.round(p.comissao_pct * 100) + '% sobre ' + brl(p.preco) + '.'}</small></div>` : ''}
       ${p.frase ? `<div class="frase">${esc(p.frase)}</div>` : ''}
+      ${p.link_rendai ? `<div class="link-rd"><div class="lr-top"><span class="selo-rd">Link Rendaí</span><b>Sem precisar se afiliar</b></div>
+        <p>Divulgue este link: a venda é registrada no seu nome, você fica com <b>${Math.round((1 - p.taxa_casa) * 100)}% da comissão</b> e saca por PIX depois da garantia.</p>
+        <div class="ml-linha"><input readonly value="${esc(p.link_rendai)}" aria-label="Seu link Rendaí"><button class="btn btn-pri copiar" data-copiar="${esc(p.link_rendai)}">Copiar</button></div></div>` : ''}
+      ${p.link_rendai ? '<div class="ou-af">ou, se preferir, afilie-se você mesmo:</div>' : ''}
       <ol class="passos-af">
         <li><span>Toque em <b>Quero vender</b> para guardar este produto na sua lista (vale XP).</span></li>
         <li><span>Abra a página do produto, entre com a sua conta Hotmart (é grátis) e clique em <b>Afiliar-se</b>.</span></li>
@@ -210,9 +214,6 @@
         <a class="btn btn-sec grande" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir na Hotmart ${IC.seta}</a>
         ${p.escolhido ? '<button class="btn btn-ouro grande" id="b-kit">Gerar kit de divulgação</button>' : ''}
       </div>
-      ${p.link_rendai ? `<div class="link-rd"><div class="lr-top"><span class="selo-rd">Link Rendaí</span><b>Sem precisar se afiliar</b></div>
-        <p>Divulgue este link: a venda é registrada no seu nome, você fica com <b>${Math.round((1 - p.taxa_casa) * 100)}% da comissão</b> e saca por PIX depois da garantia.</p>
-        <div class="ml-linha"><input readonly value="${esc(p.link_rendai)}" aria-label="Seu link Rendaí"><button class="btn btn-pri copiar" data-copiar="${esc(p.link_rendai)}">Copiar</button></div></div>` : ''}
       ${p.escolhido ? `<form class="meu-link" id="f-link"><label for="ml">Seu link de afiliado deste produto</label>
         <div class="ml-linha"><input id="ml" type="url" inputmode="url" placeholder="https://go.hotmart.com/…" value="${esc(p.meu_link || '')}" autocomplete="off"><button class="btn btn-sec" type="submit">Salvar</button></div>
         <small>Com o link salvo, o kit já sai com ele no fim de cada post. Pegue em Hotmart → Minhas afiliações → Links.</small></form>` : ''}

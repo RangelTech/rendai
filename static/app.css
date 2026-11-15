@@ -72,6 +72,7 @@
 .passos-af li:before{content:counter(p);flex:none;width:24px;height:24px;border-radius:50%;background:var(--card2);color:var(--fg);display:grid;place-items:center;font:800 12px "Display"}
 .passos-af b{color:var(--fg)}
 .botoes{display:grid;gap:12px}
+.ou-af{margin-top:20px;color:var(--mut);font-size:14px;font-weight:600}
 .link-rd{margin-top:20px;border:1px solid rgba(34,229,139,.35);background:rgba(34,229,139,.06);border-radius:16px;padding:16px;display:grid;gap:10px}
 .lr-top{display:flex;align-items:center;gap:10px}
 .selo-rd{font:800 11px system-ui;text-transform:uppercase;letter-spacing:.05em;background:var(--ac);color:#062014;border-radius:6px;padding:3px 8px}
