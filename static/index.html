@@ -119,7 +119,16 @@
     <div id="passo-codigo" hidden><h3>Digite o código</h3><p id="cod-txt">Mandamos 6 números para o seu e-mail.</p>
       <form id="f-cod"><input id="codigo" class="cod" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000"><button class="btn btn-pri grande" style="width:100%;margin-top:16px" type="submit">Entrar</button></form>
       <button class="btn btn-sec" style="width:100%;margin-top:12px" id="voltar-email" type="button">Usar outro e-mail</button></div>
+    <div id="passo-senha" hidden>
+      <h3>Conta de demonstração</h3>
+      <p>Entre com o e-mail e a senha da demonstração.</p>
+      <form id="f-senha"><label for="d-email">E-mail</label><input id="d-email" type="email" autocomplete="username" required>
+      <label for="d-senha" style="margin-top:12px">Senha</label><input id="d-senha" type="password" autocomplete="current-password" required>
+      <button class="btn btn-pri" style="width:100%;margin-top:16px" type="submit">Entrar</button></form>
+      <button class="btn btn-sec" style="width:100%;margin-top:8px" id="voltar-codigo" type="button">Entrar com código no e-mail</button>
+    </div>
     <div class="msg" id="m-msg" role="alert"></div>
+    <button class="link-demo" id="link-senha" type="button">Entrar com senha (conta de demonstração)</button>
   </div>
 </div>
 <script src="/s/site.js"></script>

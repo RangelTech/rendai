@@ -77,4 +77,20 @@
       <div class="calor">${Math.round(p.temperatura)}°<div class="temp"><i style="width:${Math.max(6, p.temperatura)}%"></i></div></div>
       <div class="meta"><span>★ ${(p.nota || 0).toFixed(1).replace('.', ',')}</span><span>${num(p.avaliacoes)} avaliações</span></div></div></div>`).join('')
   }).catch(() => calcular())
+
+  // demonstração: e-mail + senha (só a conta de demonstração aceita)
+  const lk = document.getElementById('link-senha')
+  if (lk) lk.onclick = () => { $('#passo-email').hidden = true; $('#passo-codigo').hidden = true; $('#passo-senha').hidden = false; msg(''); setTimeout(() => $('#d-email').focus(), 50) }
+  const vc = document.getElementById('voltar-codigo')
+  if (vc) vc.onclick = () => { $('#passo-senha').hidden = true; $('#passo-email').hidden = false; msg('') }
+  const fs = document.getElementById('f-senha')
+  if (fs) fs.onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter; b.disabled = true; msg('')
+    try {
+      const r = await fetch('/api/entrar/senha', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: $('#d-email').value.trim(), senha: $('#d-senha').value }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : 'Não deu certo.')
+      msg('Tudo certo! Abrindo…', 'ok'); location.href = '/app'
+    } catch (err) { msg(err.message) } finally { b.disabled = false }
+  }
 })()

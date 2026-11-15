@@ -62,6 +62,8 @@ class Config:
     planos_por_produto: dict = None   # {"<id do produto na Cakto>": "start"|"pro"|"elite"}
     lancamento_ate: str = "2026-11-30"
     admin_key: str = ""
+    demo_email: str = ""
+    demo_senha: str = ""
 
     def __post_init__(self):
         self.checkouts = self.checkouts or {}
@@ -78,7 +80,8 @@ def carregar() -> Config:
                   cakto_segredo=e("RENDAI_CAKTO_SEGREDO", ""), checkout_mensal=e("RENDAI_CHECKOUT_MENSAL", ""),
                   dev=e("RENDAI_DEV", "") == "1", coletar=e("RENDAI_COLETAR", "1") == "1",
                   checkouts=json.loads(e("RENDAI_CHECKOUTS", "") or "{}"), planos_por_produto=json.loads(e("RENDAI_PLANOS_CAKTO", "") or "{}"),
-                  lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""))
+                  lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""),
+                  demo_email=e("RENDAI_DEMO_EMAIL", ""), demo_senha=e("RENDAI_DEMO_SENHA", ""))
 
 
 def _rotina_coleta(db: Banco, parar: threading.Event) -> None:
@@ -103,6 +106,9 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
     db = Banco(os.path.join(cfg.dados, "rendai.db"))
     app = FastAPI(title="Rendaí", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg, app.state.db = cfg, db
+    if cfg.demo_email:  # conta de demonstração: sempre com o plano Elite ativo
+        u = auth.usuario_por_email(db, cfg.demo_email.lower())
+        db.exec("UPDATE usuarios SET plano='elite', ativo_ate=?, apelido=COALESCE(apelido,'Demo') WHERE id=?", (agora() + 3650 * 86400, u["id"]))
     if iniciar_rotina and cfg.coletar:
         app.state.parar = threading.Event()
         threading.Thread(target=_rotina_coleta, args=(db, app.state.parar), daemon=True, name="coleta").start()
@@ -182,6 +188,21 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         r = auth.conferir_codigo(db, cfg.segredo_sessao, email, str(b.get("codigo") or ""))
         if r != "ok":
             raise HTTPException(400, {"invalido": "código errado", "expirado": "código vencido; peça outro", "tentativas": "muitas tentativas; peça outro código"}[r])
+        u = auth.usuario_por_email(db, email)
+        token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie(COOKIE, token, max_age=auth.SESSAO_S, httponly=True, secure=not cfg.dev, samesite="lax", path="/")
+        return resp
+
+
+    @app.post("/api/entrar/senha")
+    async def entrar_senha(request: Request):
+        """Só a conta de DEMONSTRAÇÃO entra com senha (para apresentar o produto); clientes entram pelo código no e-mail."""
+        b = await request.json()
+        email = auth.normalizar_email(b.get("email"))
+        if not (cfg.demo_email and cfg.demo_senha and email == cfg.demo_email.lower()
+                and hmac.compare_digest(str(b.get("senha") or ""), cfg.demo_senha)):
+            raise HTTPException(400, "e-mail ou senha incorretos (a senha vale só para a conta de demonstração)")
         u = auth.usuario_por_email(db, email)
         token = auth.criar_sessao(db, cfg.segredo_sessao, u["id"])
         resp = JSONResponse({"ok": True})

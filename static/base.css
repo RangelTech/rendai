@@ -34,3 +34,6 @@ input:focus,textarea:focus{border-color:var(--ac)}
 .cod{letter-spacing:10px;text-align:center;font:800 26px "Display",sans-serif}
 @keyframes entra{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.link-demo{display:block;margin:12px auto 0;background:none;border:0;color:var(--mut);font-size:13px;text-decoration:underline;cursor:pointer}
+.link-demo:hover{color:var(--fg)}

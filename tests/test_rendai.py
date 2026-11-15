@@ -164,3 +164,14 @@ def test_admin_exige_chave_e_resume(cli):
     r = c.get("/api/admin/resumo", headers={"x-admin-key": "adm"})
     assert r.status_code == 200 and "assinantes" in r.json() and len(r.json()["planos"]) == 3
     assert c.get("/api/admin/assinantes", headers={"x-admin-key": "adm"}).status_code == 200
+
+
+def test_senha_so_para_demo(cli):
+    c = cli[0]
+    cfg = c.app.state.cfg
+    cfg.demo_email, cfg.demo_senha = "demo@rangeltech.net", "Demo2026"
+    assert c.post("/api/entrar/senha", json={"email": "demo@rangeltech.net", "senha": "errada"}).status_code == 400
+    assert c.post("/api/entrar/senha", json={"email": "outro@rangeltech.net", "senha": "Demo2026"}).status_code == 400
+    assert c.post("/api/entrar/senha", json={"email": "Demo@RangelTech.net", "senha": "Demo2026"}).status_code == 200
+    cfg.demo_senha = ""
+    assert c.post("/api/entrar/senha", json={"email": "demo@rangeltech.net", "senha": ""}).status_code == 400
