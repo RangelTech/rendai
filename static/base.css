@@ -37,3 +37,5 @@ input:focus,textarea:focus{border-color:var(--ac)}
 
 .link-demo{display:block;margin:12px auto 0;background:none;border:0;color:var(--mut);font-size:13px;text-decoration:underline;cursor:pointer}
 .link-demo:hover{color:var(--fg)}
+
+[hidden]{display:none!important}
