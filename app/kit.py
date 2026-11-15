@@ -29,6 +29,25 @@ def _json(txt: str) -> dict:
     return json.loads(m.group(0))
 
 
+REVISAO = """Você revisa material de divulgação de afiliados. Produto: "{titulo}". Kit (JSON):
+{kit}
+
+Critérios: honesto (sem prometer ganho garantido nem resultado milagroso), persuasivo, português correto, adequado a WhatsApp/Instagram.
+Responda SÓ com JSON: {{"nota": 0-10, "problemas": ["..."]}}"""
+
+
+def revisar(cfg, produto: dict, k: dict) -> dict | None:
+    try:
+        r = httpx.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, timeout=90, json={
+            "model": getattr(cfg, "llm_planejador", "rt-planejar"), "temperature": 0.2, "max_tokens": 400,
+            "messages": [{"role": "user", "content": REVISAO.format(titulo=produto["titulo"], kit=json.dumps(k, ensure_ascii=False)[:5000])}]})
+        r.raise_for_status()
+        j = _json(r.json()["choices"][0]["message"]["content"])
+        return {"nota": float(j.get("nota") or 0), "problemas": [str(p)[:200] for p in (j.get("problemas") or [])][:5]}
+    except Exception:  # noqa: BLE001  revisão é melhoria: sem ela o kit segue
+        return None
+
+
 def gerar(db: Banco, cfg, produto: dict) -> dict:
     c = db.um("SELECT conteudo, criado FROM kits WHERE produto=?", (produto["id"],))
     if c and agora() - c["criado"] < 7 * 86400:
@@ -42,6 +61,18 @@ def gerar(db: Banco, cfg, produto: dict) -> dict:
             r = httpx.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo, timeout=120)
             r.raise_for_status()
             k = _json(r.json()["choices"][0]["message"]["content"])
+            rev = revisar(cfg, produto, k)
+            if rev and rev["nota"] < 7 and rev["problemas"]:
+                # reescreve uma vez com as críticas do revisor
+                corpo2 = dict(corpo)
+                corpo2["messages"] = corpo["messages"] + [{"role": "assistant", "content": json.dumps(k, ensure_ascii=False)},
+                                                          {"role": "user", "content": "Reescreva o kit corrigindo: " + "; ".join(rev["problemas"]) + ". Responda só com o JSON no mesmo formato."}]
+                try:
+                    r2 = httpx.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, json=corpo2, timeout=120)
+                    r2.raise_for_status()
+                    k = _json(r2.json()["choices"][0]["message"]["content"])
+                except Exception:  # noqa: BLE001
+                    pass
             k["posts"] = [str(p) for p in (k.get("posts") or [])][:3]
             k["hashtags"] = [h if str(h).startswith("#") else "#" + str(h) for h in (k.get("hashtags") or [])][:8]
             db.exec("INSERT INTO kits(produto,conteudo,criado) VALUES(?,?,?) ON CONFLICT(produto) DO UPDATE SET conteudo=excluded.conteudo, criado=excluded.criado",

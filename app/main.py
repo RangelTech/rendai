@@ -47,6 +47,7 @@ class Config:
     llm_base: str = "https://qwen.rangeltech.net/v1"
     llm_key: str = ""
     llm_modelo: str = "qwen-abliterated"
+    llm_planejador: str = "rt-planejar"
     segredo_sessao: str = "dev"
     smtp_host: str = ""
     smtp_port: int = 587
