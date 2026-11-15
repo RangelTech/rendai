@@ -26,13 +26,15 @@
     b.innerHTML = `<button class="sb-tour-x" data-t="fim" aria-label="Fechar">×</button><b class="t">${esc(p.titulo)}</b><p>${esc(p.texto)}</p>
       <div class="sb-tour-pe"><span class="sb-tour-pt">${P.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</span>
       <span class="sb-tour-bt">${i ? '<button data-t="volt">Voltar</button>' : '<button data-t="fim">Pular</button>'}<button class="pri" data-t="${ult ? 'fim' : 'prox'}">${ult ? 'Começar' : 'Próximo'}</button></span></div>`
+    // centraliza o elemento na tela e só depois posiciona o balão (antes, a rolagem acontecia depois do cálculo e o destaque sumia)
+    const alvo = p.alvo ? document.querySelector(p.alvo) : null
+    if (alvo && vis(alvo)) { alvo.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(posicionar, 420) }
     posicionar()
   }
   function posicionar() {
     if (!raiz) return
     const p = P[i], furo = raiz.querySelector('.sb-tour-furo'), b = raiz.querySelector('.sb-tour-b')
     const el = p.alvo ? document.querySelector(p.alvo) : null
-    if (el && vis(el)) el.scrollIntoView({ block: 'nearest' })
     if (!vis(el)) { furo.style.cssText = 'left:50%;top:50%;width:0;height:0'; b.classList.add('centro'); b.style.left = b.style.top = ''; return }
     b.classList.remove('centro')
     const r = el.getBoundingClientRect(), m = 8
