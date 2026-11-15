@@ -153,3 +153,14 @@ def test_coletor_le_next_data_e_filtra(tmp_path):
     ativos = db.todos("SELECT id, temperatura FROM produtos WHERE ativo=1")
     assert [a["id"] for a in ativos] == ["hotmart:1"] and ativos[0]["temperatura"] > 0
     assert db.um("SELECT motivo_inativo FROM produtos WHERE id='hotmart:2'")["motivo_inativo"] == "filtro"
+
+
+def test_admin_exige_chave_e_resume(cli):
+    c = cli[0]
+    app = c.app
+    app.state.cfg.admin_key = "adm"
+    assert c.get("/api/admin/resumo").status_code == 401
+    assert c.get("/api/admin/resumo", headers={"x-admin-key": "errada"}).status_code == 401
+    r = c.get("/api/admin/resumo", headers={"x-admin-key": "adm"})
+    assert r.status_code == 200 and "assinantes" in r.json() and len(r.json()["planos"]) == 3
+    assert c.get("/api/admin/assinantes", headers={"x-admin-key": "adm"}).status_code == 200

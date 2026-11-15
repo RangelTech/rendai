@@ -60,6 +60,7 @@ class Config:
     checkouts: dict = None            # {"start": url, "pro": url, "elite": url}
     planos_por_produto: dict = None   # {"<id do produto na Cakto>": "start"|"pro"|"elite"}
     lancamento_ate: str = "2026-11-30"
+    admin_key: str = ""
 
     def __post_init__(self):
         self.checkouts = self.checkouts or {}
@@ -76,7 +77,7 @@ def carregar() -> Config:
                   cakto_segredo=e("RENDAI_CAKTO_SEGREDO", ""), checkout_mensal=e("RENDAI_CHECKOUT_MENSAL", ""),
                   dev=e("RENDAI_DEV", "") == "1", coletar=e("RENDAI_COLETAR", "1") == "1",
                   checkouts=json.loads(e("RENDAI_CHECKOUTS", "") or "{}"), planos_por_produto=json.loads(e("RENDAI_PLANOS_CAKTO", "") or "{}"),
-                  lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"))
+                  lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""))
 
 
 def _rotina_coleta(db: Banco, parar: threading.Event) -> None:
@@ -319,6 +320,37 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             db.exec("UPDATE usuarios SET ativo_ate=? WHERE id=?", (agora(), u["id"]))
             return {"ok": True, "revogado": email}
         return {"ok": True, "ignorado": evento}
+
+
+    # ------------------------------------------------ admin (painel do ecossistema no llm-access)
+    def exigir_admin(request: Request):
+        chave = request.headers.get("x-admin-key") or ""
+        if not cfg.admin_key or not hmac.compare_digest(chave, cfg.admin_key):
+            raise HTTPException(401, "chave de admin")
+
+    @app.get("/api/admin/resumo")
+    def admin_resumo(request: Request):
+        exigir_admin(request)
+        ativos = db.todos("SELECT plano, COUNT(*) n FROM usuarios WHERE ativo_ate>? GROUP BY plano", (agora(),))
+        receita = sum(r["n"] * (PLANOS.get(r["plano"]) or PLANOS["start"])["preco"] for r in ativos)
+        sem = agora() - 7 * 86400
+        return {"produto": "rendai", "nome": "Rendaí", "url": cfg.base_url,
+                "assinantes": sum(r["n"] for r in ativos), "por_plano": {r["plano"]: r["n"] for r in ativos},
+                "receita_mensal": round(receita, 2), "cadastros": db.um("SELECT COUNT(*) n FROM usuarios")["n"],
+                "produtos_vitrine": db.um("SELECT COUNT(*) n FROM produtos WHERE ativo=1")["n"],
+                "acoes_7d": db.um("SELECT COUNT(*) n FROM acoes WHERE criado>?", (sem,))["n"],
+                "vendas_registradas_7d": db.um("SELECT COUNT(*) n FROM acoes WHERE tipo='venda' AND criado>?", (sem,))["n"],
+                "planos": planos_publicos()}
+
+    @app.get("/api/admin/assinantes")
+    def admin_assinantes(request: Request):
+        exigir_admin(request)
+        linhas = db.todos("""SELECT u.id, u.email, u.criado, u.plano, u.ativo_ate, u.pedido, u.xp,
+                                    (SELECT MAX(criado) FROM acoes a WHERE a.usuario=u.id) ultimo
+                             FROM usuarios u ORDER BY u.ativo_ate DESC, u.criado DESC LIMIT 1000""")
+        for l in linhas:
+            l["ativo"] = l["ativo_ate"] > agora()
+        return {"assinantes": linhas}
 
     # ------------------------------------------------ páginas
     @app.get("/")
