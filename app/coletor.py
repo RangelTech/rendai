@@ -82,8 +82,26 @@ def gravar(db: Banco, p: dict) -> None:
                   (p["id"], hoje(), p["avaliacoes"]))
 
 
+_cambio = {"t": 0.0, "taxas": {}}
+
+
+def taxa_para_brl(cliente: httpx.Client, moeda: str) -> float | None:
+    """Quantos reais vale 1 unidade da moeda (cache de 6 h). A Hotmart mostra o preço na moeda do IP de quem abre (a VPS fica na Europa)."""
+    moeda = (moeda or "BRL").upper()
+    if moeda == "BRL":
+        return 1.0
+    if time.time() - _cambio["t"] > 6 * 3600 or moeda not in _cambio["taxas"]:
+        try:
+            j = cliente.get("https://open.er-api.com/v6/latest/BRL", timeout=15).json()
+            _cambio["taxas"] = {k: 1 / v for k, v in (j.get("rates") or {}).items() if v}
+            _cambio["t"] = time.time()
+        except Exception as e:  # noqa: BLE001
+            log.warning("câmbio indisponível: %s", e)
+    return _cambio["taxas"].get(moeda)
+
+
 def preco_hotmart(cliente: httpx.Client, codigo: str, oferta: str) -> float | None:
-    """Preço à vista da oferta, lido do checkout público (Nuxt: __NUXT_DATA__ é um vetor e os campos apontam para posições)."""
+    """Preço à vista da oferta em REAIS, lido do checkout público (Nuxt: __NUXT_DATA__ é um vetor e os campos apontam para posições)."""
     r = cliente.get(f"https://pay.hotmart.com/{codigo}", params={"off": oferta})
     if r.status_code != 200:
         return None
@@ -91,15 +109,20 @@ def preco_hotmart(cliente: httpx.Client, codigo: str, oferta: str) -> float | No
     if not m:
         return None
     d = json.loads(m.group(1))
+
+    def ref(x):
+        return d[x] if isinstance(x, int) and 0 <= x < len(d) else x
+
     for v in d:
         if isinstance(v, dict) and {"amount", "offer"} <= set(v):  # "installments" nem sempre vem (variante da página)
-            alvo = d[v["amount"]] if isinstance(v["amount"], int) else v["amount"]
+            alvo = ref(v["amount"])
             if isinstance(alvo, dict) and "value" in alvo:
-                val = d[alvo["value"]] if isinstance(alvo["value"], int) and alvo["value"] < len(d) else alvo["value"]
                 try:
-                    return float(val)
+                    valor = float(ref(alvo["value"]))
                 except (TypeError, ValueError):
                     return None
+                taxa = taxa_para_brl(cliente, str(ref(alvo.get("currency")) or "BRL"))
+                return round(valor * taxa, 2) if taxa else None
     return None
 
 
