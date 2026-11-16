@@ -8,6 +8,23 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%2322e58b'/><path d='M20 40l9-12 7 7 9-13' stroke='%2304140c' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <link rel="stylesheet" href="/s/base.css">
 <link rel="stylesheet" href="/s/site.css">
+<style>
+/* cinema (16/11): foto atrás do topo e faixas de foto em tela cheia */
+html,body{overflow-x:clip}
+.cine{position:relative;isolation:isolate}
+.cine-fundo{position:absolute;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);z-index:-1;background-size:cover;background-position:center;opacity:.68;animation:cineZoom 18s ease-out both}
+.cine-fundo:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.6) 42%,rgba(0,0,0,.12) 100%),linear-gradient(0deg,var(--bg,#050505) 0%,transparent 35%)}
+@keyframes cineZoom{from{transform:translateX(-50%) scale(1.08)}to{transform:translateX(-50%) scale(1)}}
+.cine-faixa{position:relative;min-height:78vh;display:grid;align-items:center;overflow:hidden;isolation:isolate}
+.cine-faixa>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;transform:scale(1.04);transition:transform 6s ease}
+.cine-faixa:hover>img{transform:scale(1)}
+.cine-faixa:after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(0,0,0,.88),rgba(0,0,0,.55) 55%,rgba(0,0,0,.15))}
+.cine-faixa .cine-txt{max-width:640px;padding:96px 0}
+.cine-faixa .cine-etq{display:inline-block;font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--ac,#fff);margin-bottom:14px}
+.cine-faixa h2{font-size:clamp(40px,5.6vw,76px);line-height:1;letter-spacing:-.02em;margin-bottom:18px;color:#fff}
+.cine-faixa p{font-size:19px;color:#e2e2e8;margin-bottom:28px;max-width:560px}
+@media (max-width:760px){.cine-fundo{opacity:.45}.cine-faixa{min-height:70vh}.cine-faixa:after{background:linear-gradient(0deg,rgba(0,0,0,.92) 35%,rgba(0,0,0,.45))}}
+</style>
 </head>
 <body>
 <header class="topo"><div class="wrap">
@@ -16,7 +33,7 @@
 </div></header>
 
 <main>
-<section class="hero"><div class="wrap">
+<section class="hero cine"><div class="cine-fundo" style="background-image:url(/s/img/heroi.webp)"></div><div class="wrap">
   <div class="hero-txt">
     <span class="chip"><span class="ponto"></span>Produtos conferidos todo dia</span>
     <h1>Seu <em>dinheiro extra</em> do fim de semana começa aqui.</h1>
@@ -82,6 +99,10 @@
   <div class="vitrine" id="amostra"><div class="vazio">Carregando a vitrine…</div></div>
   <div style="text-align:center;margin-top:32px"><button class="btn btn-pri grande" data-entrar>Ver a vitrine completa</button></div>
 </div></section>
+
+<section class="cine-faixa"><img src="/s/img/heroi.webp" alt="" loading="lazy"><div class="wrap"><div class="cine-txt rev">
+  <span class="cine-etq">Renda extra de verdade</span><h2>Seu celular vendendo<br>enquanto você descansa.</h2><p>Você divulga com o kit pronto, a comissão cai direto na sua conta da plataforma e cada venda vira ponto no seu nível.</p><button class="btn btn-pri" data-entrar="codigo">Quero começar agora</button>
+</div></div></section>
 
 <section><div class="wrap jogo">
   <div>
