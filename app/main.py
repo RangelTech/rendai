@@ -19,6 +19,7 @@ from app import senha_rotas
 from app import afiliado, auth, carteira, repasse, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
 from app import admin  # painel /admin e prompts editáveis
+from app import avisos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 ESTATICO = Path(__file__).resolve().parent.parent / "static"
@@ -70,6 +71,7 @@ class Config:
     afiliados: dict = None            # {"hotmart": {"cookie": "..."}} sessão de conta de afiliado (cofre: rendai-afiliados.env)
     hotmart: dict = None              # {"client_id","client_secret","basic"} API da conta da casa (vendas do link Rendaí)
     taxa_casa: float = 0.50           # parte da comissão que fica com a casa no link Rendaí
+    hotmart_hottok: str = ""          # token do webhook da Hotmart da conta da casa (venda pelo Link Rendaí em tempo real)
 
     def __post_init__(self):
         self.checkouts = self.checkouts or {}
@@ -91,7 +93,7 @@ def carregar() -> Config:
                   lancamento_ate=e("RENDAI_LANCAMENTO_ATE", "2026-11-30"), admin_key=e("RENDAI_ADMIN_KEY", ""),
                   demo_email=e("RENDAI_DEMO_EMAIL", ""), demo_senha=e("RENDAI_DEMO_SENHA", ""),
                   afiliados=json.loads(e("RENDAI_AFILIADOS", "") or "{}"), hotmart=json.loads(e("RENDAI_HOTMART", "") or "{}"),
-                  taxa_casa=float(e("RENDAI_TAXA_CASA", "0.50") or 0.50))
+                  taxa_casa=float(e("RENDAI_TAXA_CASA", "0.50") or 0.50), hotmart_hottok=e("RENDAI_HOTMART_HOTTOK", ""))
 
 
 def _rotina_coleta(db: Banco, parar: threading.Event, cfg_rotina=None) -> None:
@@ -120,6 +122,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
     Path(cfg.dados).mkdir(parents=True, exist_ok=True)
     db = Banco(os.path.join(cfg.dados, "rendai.db"))
     admin.preparar(db)
+    avisos.preparar(db)
     app = FastAPI(title="Rendaí", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg, app.state.db = cfg, db
     if cfg.demo_email:  # conta de demonstração: sempre com o plano Elite ativo
@@ -451,6 +454,26 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
             raise HTTPException(422, erro)
         db.exec("UPDATE usuarios SET rec_nome=?, rec_doc=?, pix=? WHERE id=?", (nome, doc, pix, u["id"]))
         return carteira.resumo(db, u["id"])
+
+    @app.post("/api/hotmart/webhook")
+    async def hotmart_webhook(request: Request):
+        """Postback 2.0 da Hotmart (conta da casa): venda pelo Link Rendaí credita a carteira e avisa o cliente na hora."""
+        r = avisos.processar(db, cfg, await request.body(), request.headers.get("x-hotmart-hottok", ""))
+        if not r["ok"] and r.get("motivo") == "hottok":
+            raise HTTPException(401, "hottok")
+        return r
+
+    @app.get("/api/avisos")
+    def meus_avisos(request: Request):
+        u = usuario(request)
+        return {"avisos": db.todos("SELECT id, tipo, titulo, texto, criado, lido FROM avisos WHERE usuario=? ORDER BY criado DESC LIMIT 30", (u["id"],)),
+                "novos": db.um("SELECT COUNT(*) n FROM avisos WHERE usuario=? AND lido IS NULL", (u["id"],))["n"]}
+
+    @app.post("/api/avisos/lidos")
+    def avisos_lidos(request: Request):
+        u = usuario(request)
+        db.exec("UPDATE avisos SET lido=? WHERE usuario=? AND lido IS NULL", (agora(), u["id"]))
+        return {"ok": True}
 
     @app.get("/r/{codigo}/{pid}")
     def redirecionar(codigo: str, pid: str, request: Request):

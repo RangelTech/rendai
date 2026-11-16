@@ -348,3 +348,26 @@ def test_senha_bloqueia_depois_de_muitos_erros(cli):
         c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"})
     assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"}).status_code == 429
     senha_rotas._erros.clear()
+
+
+def test_webhook_hotmart_credita_e_avisa(tmp_path):
+    app = criar_app(Config(dados=str(tmp_path), dev=True, segredo_sessao="s", coletar=False, hotmart_hottok="tok", taxa_casa=0.5), iniciar_rotina=False)
+    db = app.state.db
+    c = TestClient(app)
+    entrar(c, "vend@x.com")
+    u = db.um("SELECT * FROM usuarios WHERE email='vend@x.com'")
+    from app import carteira
+    codigo = carteira.codigo_ref(db, u)
+    corpo = {"event": "PURCHASE_APPROVED", "hottok": "tok", "data": {"product": {"id": 2197630}, "commissions": [{"source": "MARKETPLACE", "value": 5}, {"source": "AFFILIATE", "value": 100.0}],
+             "purchase": {"transaction": "HP123", "status": "APPROVED", "payment": {"type": "PIX"}, "tracking": {"source_sck": f"rd{codigo}"}}}}
+    assert c.post("/api/hotmart/webhook", json={**corpo, "hottok": "errado"}).status_code == 401
+    r = c.post("/api/hotmart/webhook", json=corpo).json()
+    assert r["resultado"] == "nova"
+    assert c.post("/api/hotmart/webhook", json=corpo).json()["repetido"]
+    av = c.get("/api/avisos").json()
+    assert av["novos"] == 1 and "Você vendeu" in av["avisos"][0]["titulo"] and "R$ 50,00" in av["avisos"][0]["texto"]
+    assert c.get("/api/carteira").json()["a_liberar"] + c.get("/api/carteira").json()["liberado_total"] == 50.0
+    c.post("/api/hotmart/webhook", json={**corpo, "event": "PURCHASE_REFUNDED"})
+    assert c.get("/api/avisos").json()["avisos"][0]["tipo"] == "reembolso"
+    c.post("/api/avisos/lidos")
+    assert c.get("/api/avisos").json()["novos"] == 0

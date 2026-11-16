@@ -156,3 +156,8 @@
 .alerta-rk.alvo{background:linear-gradient(90deg,rgba(34,229,139,.16),rgba(58,215,255,.1));border-color:rgba(34,229,139,.45)}.alerta-rk.lider{background:linear-gradient(90deg,rgba(255,215,0,.18),rgba(255,181,71,.08));border-color:rgba(255,215,0,.5)}
 .alerta-rk i{font-style:normal;font-size:22px}
 @keyframes pulsaAlerta{50%{box-shadow:0 0 0 6px rgba(255,140,120,.08)}}
+
+.aviso-venda{display:grid;gap:4px;border-radius:18px;padding:16px 18px;margin:0 0 14px;cursor:pointer;background:linear-gradient(120deg,rgba(34,229,139,.22),rgba(255,215,0,.12));border:1px solid rgba(34,229,139,.55);animation:sobeAviso .5s ease both}
+.aviso-venda b{font-size:18px}.aviso-venda span{color:#d8f5e6;font-size:14px}
+.aviso-venda.reembolso{background:linear-gradient(120deg,rgba(255,107,154,.16),rgba(255,181,71,.08));border-color:rgba(255,140,120,.45)}
+@keyframes sobeAviso{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
