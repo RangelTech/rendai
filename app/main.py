@@ -12,12 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import senha_rotas
 from app import afiliado, auth, carteira, repasse, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
+from app import admin  # painel /admin e prompts editáveis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 ESTATICO = Path(__file__).resolve().parent.parent / "static"
@@ -118,6 +119,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
     cfg = cfg or carregar()
     Path(cfg.dados).mkdir(parents=True, exist_ok=True)
     db = Banco(os.path.join(cfg.dados, "rendai.db"))
+    admin.preparar(db)
     app = FastAPI(title="Rendaí", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg, app.state.db = cfg, db
     if cfg.demo_email:  # conta de demonstração: sempre com o plano Elite ativo
@@ -611,6 +613,13 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         if not usuario(request, obrigatorio=False):
             return RedirectResponse("/?entrar=1", status_code=303)
         return FileResponse(ESTATICO / "app.html")
+
+    app.include_router(admin.rotas(db, cfg.segredo_sessao, """SELECT email, criado, plano, ativo_ate, (ativo_ate > strftime('%s','now')) ativo
+        FROM usuarios ORDER BY criado DESC""", seguro=not cfg.dev))
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def pagina_admin():
+        return FileResponse(ESTATICO / "admin.html")
 
     app.mount("/s", StaticFiles(directory=ESTATICO), name="estatico")
     return app

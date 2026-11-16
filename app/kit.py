@@ -7,6 +7,7 @@ import re
 import httpx
 
 from app.db import Banco, agora
+from app import admin  # prompts editáveis no /admin
 
 PROMPT = """Você escreve material de divulgação para afiliados iniciantes no Brasil. Produto: "{titulo}" (de {autor}).
 Descrição: {descricao}
@@ -40,7 +41,7 @@ def revisar(cfg, produto: dict, k: dict) -> dict | None:
     try:
         r = httpx.post(cfg.llm_base + "/chat/completions", headers={"Authorization": f"Bearer {cfg.llm_key}"}, timeout=90, json={
             "model": getattr(cfg, "llm_planejador", "rt-planejar"), "temperature": 0.2, "max_tokens": 400,
-            "messages": [{"role": "user", "content": REVISAO.format(titulo=produto["titulo"], kit=json.dumps(k, ensure_ascii=False)[:5000])}]})
+            "messages": [{"role": "user", "content": admin.formatar("rendai-revisao", REVISAO, titulo=produto["titulo"], kit=json.dumps(k, ensure_ascii=False)[:5000])}]})
         r.raise_for_status()
         j = _json(r.json()["choices"][0]["message"]["content"])
         return {"nota": float(j.get("nota") or 0), "problemas": [str(p)[:200] for p in (j.get("problemas") or [])][:5]}
@@ -53,7 +54,7 @@ def gerar(db: Banco, cfg, produto: dict) -> dict:
     if c and agora() - c["criado"] < 7 * 86400:
         return json.loads(c["conteudo"])
     corpo = {"model": cfg.llm_modelo, "temperature": 0.7, "max_tokens": 1800, "chat_template_kwargs": {"enable_thinking": False},
-             "messages": [{"role": "user", "content": PROMPT.format(titulo=produto["titulo"], autor=produto.get("autor") or "um especialista",
+             "messages": [{"role": "user", "content": admin.formatar("rendai-kit", PROMPT, titulo=produto["titulo"], autor=produto.get("autor") or "um especialista",
                                                                      descricao=(produto.get("descricao") or "")[:1500])}]}
     ultimo = None
     for _ in range(2):
