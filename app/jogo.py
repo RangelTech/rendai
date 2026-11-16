@@ -123,9 +123,54 @@ def missao(db: Banco, uid: int) -> dict:
             "produtos": produtos_da_missao(db, uid)}
 
 
+NOMES_RIVAIS = ["Rafa_vendas", "Bia.afiliada", "Gui Lucro", "Duda Digital", "Léo Comissão", "Mari Renda", "Caio_top", "Lari Vende",
+                "Thiago R.", "Nina Afiliados", "Davi Extra", "Malu Online", "Bruno K.", "Camila D.", "Pedro Hotmart", "Júlia S."]
+
+
+def rivais(uid: int, xp: int, rotulo: str, dia_semana: int, n: int = 7) -> list[dict]:
+    """Vendedores de motivação (NPCs, como bots de jogo): dão competição ao ranking da semana. Aparecem como jogadores
+    normais (decisão do Lucas, 16/11; os termos avisam que o ranking inclui perfis de motivação). Avançam com os dias,
+    então quem para de divulgar é ultrapassado; um deles fica sempre logo atrás do usuário."""
+    import random
+    rnd = random.Random(f"{uid}:{rotulo}")
+    ritmo = 40 + 55 * dia_semana
+    base = max(xp, ritmo)
+    out = []
+    for i, nome in enumerate(rnd.sample(NOMES_RIVAIS, n)):
+        fator = [1.35, 1.18, 1.07, 0.0, 0.88, 0.74, 0.55][i]
+        pts = max(0, xp - rnd.randint(8, 30)) if fator == 0 else int(base * fator + rnd.randint(-12, 12))
+        out.append({"apelido": nome, "xp": max(pts, 0), "eu": False})
+    return out
+
+
+def alerta(top: list[dict]) -> dict | None:
+    i = next((k for k, x in enumerate(top) if x["eu"]), None)
+    if i is None:
+        return None
+    eu = top[i]
+    atras = top[i + 1] if i + 1 < len(top) else None
+    frente = top[i - 1] if i > 0 else None
+    if atras and eu["xp"] - atras["xp"] <= 40:
+        d = eu["xp"] - atras["xp"]
+        return {"tipo": "ameaca", "texto": f"{atras['apelido']} está a {d} XP de você. Divulga hoje e não deixa passar!"}
+    if frente:
+        d = frente["xp"] - eu["xp"]
+        return {"tipo": "alvo", "texto": f"Faltam {d} XP para passar {frente['apelido']}. Uma divulgação já ajuda."}
+    return {"tipo": "lider", "texto": "Você está em 1º lugar na semana. Segura a coroa!"}
+
+
 def ranking(db: Banco, uid: int, n: int = 10) -> dict:
-    ini, fim, _ = semana()
+    ini, fim, rotulo = semana()
     linhas = db.todos("""SELECT u.id, COALESCE(u.apelido, 'Vendedor ' || u.id) apelido, SUM(a.xp) xp FROM acoes a JOIN usuarios u ON u.id=a.usuario
                          WHERE a.criado BETWEEN ? AND ? GROUP BY u.id ORDER BY xp DESC LIMIT 50""", (ini, fim))
-    eu = next((i + 1 for i, l in enumerate(linhas) if l["id"] == uid), None)
-    return {"top": [{"pos": i + 1, "apelido": l["apelido"], "xp": l["xp"], "eu": l["id"] == uid} for i, l in enumerate(linhas[:n])], "minha_posicao": eu}
+    lista = [{"apelido": l["apelido"], "xp": int(l["xp"] or 0), "eu": l["id"] == uid} for l in linhas]
+    if not any(x["eu"] for x in lista):
+        u = db.um("SELECT COALESCE(apelido, 'Você') apelido FROM usuarios WHERE id=?", (uid,))
+        lista.append({"apelido": (u or {}).get("apelido") or "Você", "xp": 0, "eu": True})
+    meu = next(x["xp"] for x in lista if x["eu"])
+    dia = time.gmtime(time.time() - 3 * 3600).tm_wday
+    lista += rivais(uid, meu, rotulo, dia)
+    lista.sort(key=lambda x: (-x["xp"], not x["eu"]))
+    top = [{"pos": i + 1, **x} for i, x in enumerate(lista)]
+    eu = next(x["pos"] for x in top if x["eu"])
+    return {"top": top[:n] if eu <= n else top[:n - 1] + [top[eu - 1]], "minha_posicao": eu, "alerta": alerta(top)}

@@ -91,13 +91,14 @@
   async function telaInicio() {
     const t = $('#tela')
     t.innerHTML = '<div class="esq" style="height:140px;margin-top:8px"></div><div class="esq" style="margin-top:16px"></div><div class="esq" style="height:220px;margin-top:16px"></div>'
-    const [m, meus] = await Promise.all([api('/api/missao'), api('/api/meus').catch(() => ({ produtos: [] }))])
+    const [m, meus, rk] = await Promise.all([api('/api/missao'), api('/api/meus').catch(() => ({ produtos: [] })), api('/api/ranking').catch(() => ({}))])
     const n = eu.nivel
     const potencial = m.produtos.reduce((t, p) => t + (p.ganho_venda || 0) * 2, 0)
     const dias = Array.from({ length: 7 }, (_, i) => `<i class="${i < Math.min(7, eu.streak) ? 'on' : ''}">${i < eu.streak ? IC.check : ''}</i>`).join('')
     t.innerHTML = `
       ${eu.assinante ? '' : `<div class="paywall"><b class="display">Escolha seu plano e comece a vender hoje</b><span>Os produtos abaixo pagam até ${brl(Math.max(0, ...m.produtos.map((p) => p.ganho_venda || 0)))} por venda.</span><button class="btn btn-ouro grande" data-planos>Ver planos</button></div>`}
       ${potencial ? `<div class="potencial"><span>Seu potencial nesta semana</span><b>${brl0(potencial)}</b><small>vendendo 2 de cada produto da sua missão · ${brl0(potencial * 4.3)} por mês</small></div>` : ''}
+      ${rk.alerta ? `<div class="alerta-rk ${rk.alerta.tipo}" data-ir="ranking" style="cursor:pointer"><i>${({ ameaca: '⚠', alvo: '🎯', lider: '👑' })[rk.alerta.tipo] || ''}</i><span>${esc(rk.alerta.texto)}</span></div>` : ''}
       <div class="nivel"><div class="nivel-top"><div class="nivel-n">${n.numero}</div><div><b>${esc(n.nome)}</b><span>${n.proximo ? `Faltam ${num(n.falta)} XP para ${esc(n.proximo)}` : 'Nível máximo. Lenda!'}</span></div></div>
         <div class="barra"><i id="barra-xp"></i></div></div>
       <div class="checkin"><div><b>${eu.fez_checkin_hoje ? 'Presença confirmada hoje' : 'Marque presença hoje'}</b><span>${eu.streak} ${eu.streak === 1 ? 'dia seguido' : 'dias seguidos'}</span><div class="dias">${dias}</div></div>
@@ -138,6 +139,7 @@
     const r = await api('/api/ranking')
     t.innerHTML = `<div class="sec-t"><h2>Ranking da semana</h2></div>
       <p style="color:var(--mut);margin:0 0 16px;font-size:14px">XP ganho desde segunda. Zera toda semana: qualquer um pode chegar no topo.</p>
+      ${r.alerta ? `<div class="alerta-rk ${r.alerta.tipo}"><i>${({ ameaca: '⚠', alvo: '🎯', lider: '👑' })[r.alerta.tipo] || ''}</i><span>${esc(r.alerta.texto)}</span></div>` : ''}
       <div class="rk">${r.top.length ? r.top.map((l) => `<div class="rk-l ${l.eu ? 'eu' : ''}"><span class="rk-p">${l.pos}</span><b>${esc(l.apelido)}${l.eu ? ' (você)' : ''}</b><span>${num(l.xp)} XP</span></div>`).join('') : '<div class="vazio">Ninguém pontuou ainda nesta semana. Seja o primeiro!</div>'}</div>
       ${r.minha_posicao && r.minha_posicao > 10 ? `<p class="atualizado">Você está em ${r.minha_posicao}º lugar.</p>` : ''}`
   }

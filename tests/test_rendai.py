@@ -128,7 +128,9 @@ def test_ranking_semana(cli):
     c.post("/api/acao", json={"tipo": "checkin"})
     c.post("/api/eu/apelido", json={"apelido": "Zé das Vendas"})
     r = c.get("/api/ranking").json()
-    assert r["minha_posicao"] == 1 and r["top"][0]["apelido"] == "Zé das Vendas"
+    eu = next(l for l in r["top"] if l["eu"])
+    assert eu["apelido"] == "Zé das Vendas" and eu["pos"] == r["minha_posicao"] and len(r["top"]) == 8
+    assert r["alerta"]["texto"] and not any("IA" in l["apelido"] for l in r["top"])
 
 
 def test_cakto_elite_libera_tudo(cli):

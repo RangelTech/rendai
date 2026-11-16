@@ -152,3 +152,7 @@
 
 .form-rec{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.form-rec input:first-child{grid-column:1/-1}.form-rec button{grid-column:1/-1}
 .aviso-saque{margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(34,229,139,.1);border:1px solid rgba(34,229,139,.35)}
+.alerta-rk{display:flex;align-items:center;gap:12px;border-radius:16px;padding:14px 18px;margin:0 0 16px;font-weight:700;background:linear-gradient(90deg,rgba(255,107,154,.18),rgba(255,181,71,.12));border:1px solid rgba(255,140,120,.45);animation:pulsaAlerta 2.4s ease-in-out infinite}
+.alerta-rk.alvo{background:linear-gradient(90deg,rgba(34,229,139,.16),rgba(58,215,255,.1));border-color:rgba(34,229,139,.45)}.alerta-rk.lider{background:linear-gradient(90deg,rgba(255,215,0,.18),rgba(255,181,71,.08));border-color:rgba(255,215,0,.5)}
+.alerta-rk i{font-style:normal;font-size:22px}
+@keyframes pulsaAlerta{50%{box-shadow:0 0 0 6px rgba(255,140,120,.08)}}
