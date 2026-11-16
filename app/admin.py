@@ -71,7 +71,7 @@ def formatar(nome: str, padrao: str, **campos) -> str:
 def rotas(db: Banco, segredo: str, consulta_clientes: str, usuario: str | None = None, senha: str | None = None, seguro: bool = True) -> APIRouter:
     usuario = usuario if usuario is not None else os.environ.get("RT_ADMIN_USUARIO", "")
     senha = senha if senha is not None else os.environ.get("RT_ADMIN_SENHA", "")
-    r = APIRouter(prefix="/api/admin")
+    r = APIRouter(prefix="/api/painel")
 
     def assinar(exp: int) -> str:
         return f"{exp}.{hmac.new(segredo.encode(), f'admin:{usuario}:{exp}'.encode(), hashlib.sha256).hexdigest()}"
