@@ -91,7 +91,8 @@ def registrar(app, db, cfg, mailer, login, usuario) -> None:
     @app.get("/api/senha")
     def tem_senha(request: Request):
         u = usuario(request)
-        return {"tem_senha": bool(u.get("senha_hash")), "email": u["email"]}
+        demo = (getattr(cfg, "demo_email", "") or "").lower()  # demo entra pela senha da configuração
+        return {"tem_senha": bool(u.get("senha_hash")) or bool(demo and u["email"] == demo), "email": u["email"]}
 
     @app.post("/api/senha")
     async def definir_senha(request: Request):
