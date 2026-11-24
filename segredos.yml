@@ -1,0 +1,17 @@
+# Só NOMES das variáveis. Os valores ficam no Infisical (nunca no git). Spec 57, seção 0A.2.
+infisical:
+  projeto: rt-produtos
+  pasta: rendai
+  ambiente: prod
+segredos:
+  - RENDAI_ADMIN_KEY
+  - RENDAI_CAKTO_SEGREDO
+  - RENDAI_CHECKOUT_MENSAL
+  - RENDAI_DEMO_SENHA
+  - RENDAI_LLM_KEY
+  - RENDAI_SEGREDO_SESSAO
+  - RENDAI_SMTP_FROM
+  - SMTP_HOST
+  - SMTP_PASSWORD
+  - SMTP_PORT
+  - SMTP_USER
