@@ -1,7 +1,9 @@
 """Banco do Rendaí (SQLite em /data)."""
 from __future__ import annotations
 
+import os
 import sqlite3
+import uuid
 import threading
 import time
 from contextlib import contextmanager
@@ -57,31 +59,14 @@ CREATE TABLE IF NOT EXISTS eventos_cakto (id TEXT PRIMARY KEY, recebido REAL NOT
 """
 
 
-class Banco:
+class BancoSQLite:
     def __init__(self, caminho: str):
         self._trava = threading.Lock()
         self.con = sqlite3.connect(caminho, check_same_thread=False, isolation_level=None)
         self.con.row_factory = sqlite3.Row
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.executescript(ESQUEMA)
-        # migrações simples (colunas novas em banco que já existe)
-        cols = {r[1] for r in self.con.execute("PRAGMA table_info(produtos)")}
-        for col, tipo in (("oferta", "TEXT"), ("preco", "REAL"), ("comissao_pct", "REAL"), ("link_casa", "TEXT")):
-            if col not in cols:
-                self.con.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo}")
-        cols_u = {r[1] for r in self.con.execute("PRAGMA table_info(usuarios)")}
-        for col in ("codigo_ref", "pix", "termos_versao", "termos_aceite", "rec_nome", "rec_doc"):  # link Rendaí + repasse (spec 44 parte 2)
-            if col not in cols_u:
-                self.con.execute(f"ALTER TABLE usuarios ADD COLUMN {col} TEXT")
-        cols_s = {r[1] for r in self.con.execute("PRAGMA table_info(saques)")}
-        for col in ("nome", "doc", "prazo", "motivo", "comprovante", "transacao_pix", "forma"):
-            if col not in cols_s:
-                self.con.execute(f"ALTER TABLE saques ADD COLUMN {col} TEXT")
-        cols_v = {r[1] for r in self.con.execute("PRAGMA table_info(vendas_casa)")}
-        for col in ("plataforma", "metodo"):
-            if col not in cols_v:
-                self.con.execute(f"ALTER TABLE vendas_casa ADD COLUMN {col} TEXT")
-        self.con.execute("CREATE TABLE IF NOT EXISTS cliques (id INTEGER PRIMARY KEY, codigo TEXT NOT NULL, produto TEXT NOT NULL, criado REAL NOT NULL, origem TEXT)")
+        _migrar_esquema(self)
 
     @contextmanager
     def tx(self):
@@ -114,3 +99,40 @@ def agora() -> float:
 
 def hoje() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(time.time() - 3 * 3600))  # dia de Brasília
+
+
+def _migrar_esquema(self):
+    """Migrações de coluna e tabela (rodam no SQLite e no Postgres; spec 57)."""
+    # migrações simples (colunas novas em banco que já existe)
+    cols = {r[1] for r in self.con.execute("PRAGMA table_info(produtos)")}
+    for col, tipo in (("oferta", "TEXT"), ("preco", "REAL"), ("comissao_pct", "REAL"), ("link_casa", "TEXT")):
+        if col not in cols:
+            self.con.execute(f"ALTER TABLE produtos ADD COLUMN {col} {tipo}")
+    cols_u = {r[1] for r in self.con.execute("PRAGMA table_info(usuarios)")}
+    for col in ("codigo_ref", "pix", "termos_versao", "termos_aceite", "rec_nome", "rec_doc"):  # link Rendaí + repasse (spec 44 parte 2)
+        if col not in cols_u:
+            self.con.execute(f"ALTER TABLE usuarios ADD COLUMN {col} TEXT")
+    cols_s = {r[1] for r in self.con.execute("PRAGMA table_info(saques)")}
+    for col in ("nome", "doc", "prazo", "motivo", "comprovante", "transacao_pix", "forma"):
+        if col not in cols_s:
+            self.con.execute(f"ALTER TABLE saques ADD COLUMN {col} TEXT")
+    cols_v = {r[1] for r in self.con.execute("PRAGMA table_info(vendas_casa)")}
+    for col in ("plataforma", "metodo"):
+        if col not in cols_v:
+            self.con.execute(f"ALTER TABLE vendas_casa ADD COLUMN {col} TEXT")
+    self.con.execute("CREATE TABLE IF NOT EXISTS cliques (id INTEGER PRIMARY KEY, codigo TEXT NOT NULL, produto TEXT NOT NULL, criado REAL NOT NULL, origem TEXT)")
+
+
+def Banco(caminho: str):
+    """Postgres central (banco `produtos`, schema do produto) quando PRODUTOS_DATABASE_URL existe; senão o SQLite de antes
+    (plano de volta). Spec 57, seção 8. PRODUTOS_SCHEMA_TESTE=1 dá um schema novo por instância (testes isolados)."""
+    dsn = os.environ.get("PRODUTOS_DATABASE_URL")
+    if not dsn:
+        return BancoSQLite(caminho)
+    from produtos_core.banco_pg import Banco as BancoPG
+    schema = os.environ.get("PRODUTOS_SCHEMA", "rendai")
+    if os.environ.get("PRODUTOS_SCHEMA_TESTE"):
+        schema = "teste_" + uuid.uuid4().hex[:10]
+    b = BancoPG(dsn, schema, ESQUEMA)
+    _migrar_esquema(b)
+    return b

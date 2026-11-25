@@ -531,7 +531,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
     @app.get("/api/admin/saques")
     def admin_saques(request: Request):
         exigir_admin(request)
-        lst = db.todos("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario ORDER BY CASE s.estado WHEN 'pedido' THEN 0 ELSE 1 END, COALESCE(s.prazo, s.criado) LIMIT 300")
+        lst = db.todos("SELECT s.*, u.email FROM saques s JOIN usuarios u ON u.id=s.usuario ORDER BY CASE s.estado WHEN 'pedido' THEN 0 ELSE 1 END, COALESCE(CAST(s.prazo AS DOUBLE PRECISION), s.criado) LIMIT 300")
         a_pagar = [x for x in lst if x["estado"] == "pedido"]
         recebido = db.um("SELECT COALESCE(SUM(comissao),0) s FROM vendas_casa WHERE estado='liberada'")["s"]
         pago = db.um("SELECT COALESCE(SUM(valor),0) s FROM saques WHERE estado='pago'")["s"]
