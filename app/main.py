@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from app import senha_rotas
-from produtos_core import acesso
+from produtos_core import acesso, armazenamento
 from app import afiliado, auth, carteira, repasse, coletor, jogo, kit, mailer
 from app.db import Banco, agora, hoje
 from app import admin  # painel /admin e prompts editáveis
@@ -199,6 +199,7 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
                      login=_login, usuario=usuario, criar_usuario=lambda email: auth.usuario_por_email(db, email),
                      produto="Rendaí", base_url=cfg.base_url, destino="/app", cor="#ff3d6e",
                      demo_email=lambda: cfg.demo_email, demo_senha=lambda: cfg.demo_senha, dev=cfg.dev)  # cadastro e login comuns (spec 57 §5A)
+    armazenamento.registrar(app, armazenamento.Armazenamento(pasta_local=os.path.join(getattr(cfg, "dados", "") or ".", "arquivos")))  # MinIO (spec 57 §8.6)
 
     @app.post("/api/sair")
     def sair(request: Request):
