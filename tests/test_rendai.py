@@ -23,7 +23,7 @@ def produto(db, i, temp=50.0, ativo=1, conferido=None):
 @pytest.fixture()
 def cli(tmp_path):
     app = criar_app(Config(dados=str(tmp_path), dev=True, segredo_sessao="s", cakto_segredo="ck", coletar=False, admin_key="adm",
-                           planos_por_produto={"prod-pro": "pro", "prod-elite": "elite"}, checkouts={"start": "https://pay/x"}), iniciar_rotina=False)
+                           planos_por_produto={"prod-start": "start", "prod-pro": "pro", "prod-elite": "elite"}, checkouts={"start": "https://pay/x"}), iniciar_rotina=False)
     db = app.state.db
     for i in range(1, 8):
         produto(db, i, temp=10 * i)
@@ -368,3 +368,10 @@ def test_senha_bloqueia_depois_de_muitos_erros(cli):
     for _ in range(5):
         assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "x"}).status_code == 400
     assert c.post("/api/entrar/senha", json={"email": "forca@exemplo.com", "senha": "senha-certa-1"}).status_code == 429
+
+
+def test_cakto_produto_fora_do_mapa_nao_libera(cli):
+    """Evento de teste da Cakto (produto de exemplo) não cria conta nem libera plano."""
+    c, db = cli
+    r = c.post("/api/cakto", json={"secret": "ck", "event": "purchase_approved", "data": {"id": "t1", "customer": {"email": "john.doe@example.com"}, "product": {"id": "exemplo"}}})
+    assert r.json()["ignorado"] == "produto fora do mapa" and not db.um("SELECT 1 AS x FROM usuarios WHERE email=?", ("john.doe@example.com",))

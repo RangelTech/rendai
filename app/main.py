@@ -360,6 +360,8 @@ def criar_app(cfg: Config | None = None, iniciar_rotina: bool = True) -> FastAPI
         email = auth.normalizar_email((dados.get("customer") or {}).get("email"))
         if not email:
             return {"ok": True, "ignorado": "sem email"}
+        if str((dados.get("product") or {}).get("id") or "") not in cfg.planos_por_produto:  # ex.: produto de exemplo do evento de teste
+            return {"ok": True, "ignorado": "produto fora do mapa"}
         u = auth.usuario_por_email(db, email)
         if evento in ("purchase_approved", "subscription_renewed", "subscription_created"):
             prod = str((dados.get("product") or {}).get("id") or "")
